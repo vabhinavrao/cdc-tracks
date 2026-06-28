@@ -803,9 +803,30 @@ const AdminDashboard = ({ user }) => {
             <p className="text-xs text-slate-500">Click any student row to view their full detailed CDC performance dashboard.</p>
           </div>
 
-          {/* Roster Controls: Band Filter, Sort Order, Search Input */}
+          {/* Roster Controls: Branch Filter, Band Filter, Sort Order, Search Input */}
           <div className="flex flex-wrap items-center gap-2.5 w-full lg:w-auto">
             
+            {/* Branch Filter Dropdown */}
+            {isSuperAdmin && (
+              <div className="flex items-center gap-1.5 bg-slate-50 px-3 py-2 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700">
+                <Building2 size={14} className="text-slate-400 shrink-0" />
+                <span className="text-slate-400 hidden sm:inline">Branch:</span>
+                <select
+                  value={selectedBranch}
+                  onChange={(e) => setSelectedBranch(e.target.value)}
+                  className="bg-transparent focus:outline-none font-bold text-slate-800 cursor-pointer"
+                >
+                  <option value="ALL">All Branches</option>
+                  <option value="CSE">CSE</option>
+                  <option value="CSM">CSM</option>
+                  <option value="CSD">CSD</option>
+                  <option value="ECE">ECE</option>
+                  <option value="EEE">EEE</option>
+                  <option value="MECH">MECH</option>
+                </select>
+              </div>
+            )}
+
             {/* Band Filter Dropdown */}
             <div className="flex items-center gap-1.5 bg-slate-50 px-3 py-2 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700">
               <Filter size={14} className="text-slate-400 shrink-0" />
@@ -854,6 +875,7 @@ const AdminDashboard = ({ user }) => {
 
           </div>
         </div>
+
 
 
         {/* Roster Table */}
