@@ -39,7 +39,7 @@ const TopNav = ({ user, onLogout }) => {
                 {/* Authenticated Links */}
                 <NavLink to="/dashboard" className={navLinkClass}>
                   <LayoutDashboard size={16} />
-                  <span>Curriculum</span>
+                  <span>Dashboard</span>
                 </NavLink>
                 <NavLink to="/cdc-dashboard" className={navLinkClass}>
                   <Award size={16} />

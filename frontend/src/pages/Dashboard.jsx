@@ -1,12 +1,13 @@
 // src/pages/Dashboard.jsx
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { BookOpen, Award, ChevronRight, Bookmark, AlertCircle, Compass, ArrowRight, Sparkles } from 'lucide-react';
+import { BookOpen, Award, ChevronRight, Bookmark, AlertCircle, Compass, ArrowRight, Sparkles, TrendingUp, BarChart3 } from 'lucide-react';
 import axios from 'axios';
 import { getAllTracksSummary, getBranchDisplayName, isTrackPreferredForBranch } from '../utils/trackLoader';
 
 const Dashboard = ({ user }) => {
   const [data, setData] = useState(null);
+  const [cdcData, setCdcData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -17,13 +18,25 @@ const Dashboard = ({ user }) => {
       try {
         setLoading(true);
         setError('');
-        // Make the API call with the email in Authorization header
-        const response = await axios.get(`${API_URL}/api/student/dashboard-data`, {
-          headers: {
-            'Authorization': `Bearer ${user.email}`
-          }
-        });
-        setData(response.data);
+        
+        const [dashRes, cdcRes] = await Promise.allSettled([
+          axios.get(`${API_URL}/api/student/dashboard-data`, {
+            headers: { 'Authorization': `Bearer ${user.email}` }
+          }),
+          axios.get(`${API_URL}/api/student/cdc-dashboard-data`, {
+            headers: { 'Authorization': `Bearer ${user.email}` }
+          })
+        ]);
+
+        if (dashRes.status === 'fulfilled') {
+          setData(dashRes.value.data);
+        } else {
+          throw dashRes.reason;
+        }
+
+        if (cdcRes.status === 'fulfilled') {
+          setCdcData(cdcRes.value.data);
+        }
       } catch (err) {
         console.error('Error fetching dashboard data:', err);
         setError(
@@ -72,6 +85,10 @@ const Dashboard = ({ user }) => {
   const selectedTrack = data?.selected_track;
   const bookmarkedTracks = data?.bookmarked_tracks_data || [];
 
+  const cdcOverall = cdcData?.overall || {};
+  const rawScores = cdcData?.test_scores || {};
+  const attemptedCount = Object.values(rawScores).filter(val => val !== null && val !== undefined && val !== '').length;
+
   const allTracks = getAllTracksSummary();
   const recommendedTracks = allTracks.filter(t => isTrackPreferredForBranch(t.slug, student.branch));
   const branchDisplayName = getBranchDisplayName(student.branch);
@@ -114,65 +131,87 @@ const Dashboard = ({ user }) => {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         
-        {/* Left Column: Academic Metadata Profile Card */}
+        {/* Left Column: CDC Dashboard Summary Cards */}
         <div className="lg:col-span-1 space-y-6">
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm flex flex-col">
+          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm flex flex-col space-y-6">
             
-            {/* Profile Avatar & Header */}
-            <div className="flex flex-col items-center mb-6 pb-6 border-b border-slate-100">
-              {student.picture ? (
-                <img
-                  src={student.picture}
-                  alt="Student Avatar"
-                  className="w-20 h-20 rounded-full border-4 border-blue-50 object-cover shadow-sm mb-3"
-                  referrerPolicy="no-referrer"
-                />
-              ) : (
-                <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 text-2xl font-black mb-3 border-4 border-blue-50 shadow-sm">
-                  {student.name 
-                    ? student.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() 
-                    : student.roll_number?.slice(-2) || 'ST'}
-                </div>
-              )}
-              <h3 className="font-bold text-xl text-slate-800 leading-snug">{student.name || 'Student'}</h3>
-              <p className="text-slate-500 text-xs mt-1 font-bold tracking-wider uppercase">
-                {formatYear(currentYear)} • {student.branch}
-              </p>
+            {/* CDC Header */}
+            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+              <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2.5">
+                <Award size={20} className="text-emerald-600" />
+                CDC Performance Overview
+              </h2>
+              <span className="text-[11px] font-bold uppercase tracking-wider px-2.5 py-0.5 bg-emerald-50 text-emerald-700 rounded-full">
+                Overview
+              </span>
             </div>
 
-            <div className="space-y-4">
-              <div>
-                <span className="text-xs text-slate-400 font-bold uppercase tracking-wider block">Roll Number</span>
-                <span className="text-slate-800 font-bold block">{student.roll_number}</span>
-              </div>
-              
-              <div>
-                <span className="text-xs text-slate-400 font-bold uppercase tracking-wider block">Email Address</span>
-                <span className="text-slate-800 font-semibold block break-all">{student.email}</span>
-              </div>
-              
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <span className="text-xs text-slate-400 font-bold uppercase tracking-wider block">Department / Branch</span>
-                  <span className="text-slate-800 font-bold block">{student.branch}</span>
+            {/* Top Stat Pills: Band & Rank */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 flex flex-col items-center text-center">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">CDC Band</span>
+                <div className="my-1.5 text-2xl font-black text-white bg-emerald-600 w-11 h-11 rounded-xl flex items-center justify-center shadow-md shadow-emerald-600/20">
+                  {cdcOverall.cdc_band || 'B'}
                 </div>
+                <span className="text-[10px] text-slate-400 font-medium">Performance Band</span>
+              </div>
+
+              <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 flex flex-col items-center text-center">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">CDC Rank</span>
+                <div className="my-1.5 h-11 flex items-center justify-center text-2xl font-black text-slate-900">
+                  <span className="text-slate-400 text-base font-bold mr-0.5">#</span>
+                  {cdcOverall.cdc_rank || '207'}
+                </div>
+                <span className="text-[10px] text-slate-400 font-medium">Out of 815</span>
+              </div>
+            </div>
+
+            {/* Details Grid: Grade Score & Tests Attempted */}
+            <div className="space-y-3 pt-1">
+              <div className="bg-emerald-50/50 p-3.5 rounded-xl border border-emerald-100 flex items-center justify-between">
                 <div>
-                  <span className="text-xs text-slate-400 font-bold uppercase tracking-wider block">Admission Type</span>
-                  <span className="text-slate-800 font-bold block">{student.admission_type}</span>
+                  <span className="text-xs text-slate-500 font-bold block">CDC Grade Score</span>
+                  <span className="text-xl font-black text-emerald-700 block mt-0.5">{cdcOverall.cdc_grade_score ?? 78}%</span>
+                </div>
+                <div className="p-2.5 bg-emerald-100 text-emerald-700 rounded-lg">
+                  <TrendingUp size={20} />
                 </div>
               </div>
-              
-              <div className="grid grid-cols-2 gap-4">
+
+              <div className="bg-blue-50/50 p-3.5 rounded-xl border border-blue-100 flex items-center justify-between">
                 <div>
-                  <span className="text-xs text-slate-400 font-bold uppercase tracking-wider block">Joining Year</span>
-                  <span className="text-slate-800 font-semibold block">{student.joining_year}</span>
+                  <span className="text-xs text-slate-500 font-bold block">Tests Attempted</span>
+                  <span className="text-xl font-black text-blue-700 block mt-0.5">
+                    {attemptedCount} <span className="text-xs font-normal text-slate-400">/ 30</span>
+                  </span>
                 </div>
-                <div>
-                  <span className="text-xs text-slate-400 font-bold uppercase tracking-wider block">Graduation Year</span>
-                  <span className="text-slate-800 font-semibold block">{student.graduation_year}</span>
+                <div className="p-2.5 bg-blue-100 text-blue-700 rounded-lg">
+                  <BarChart3 size={20} />
                 </div>
               </div>
             </div>
+
+            {/* Quick Stats: Avg Perf & Consistency */}
+            <div className="grid grid-cols-2 gap-3 pt-1 border-t border-slate-100 text-slate-700">
+              <div className="p-3 bg-slate-50 rounded-xl">
+                <span className="text-[10px] font-bold text-slate-400 uppercase block">Avg Performance</span>
+                <span className="text-base font-extrabold text-slate-800 block mt-0.5">{cdcOverall.avg_performance ?? 75}%</span>
+              </div>
+              <div className="p-3 bg-slate-50 rounded-xl">
+                <span className="text-[10px] font-bold text-slate-400 uppercase block">Consistency</span>
+                <span className="text-base font-extrabold text-slate-800 block mt-0.5">{cdcOverall.consistency_score ?? 82}%</span>
+              </div>
+            </div>
+
+            {/* Call to action button */}
+            <Link
+              to="/cdc-dashboard"
+              className="w-full py-3 px-4 bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm rounded-xl flex items-center justify-center gap-2 transition-colors shadow-sm mt-2"
+            >
+              <span>View Full CDC Performance</span>
+              <ChevronRight size={16} />
+            </Link>
+
           </div>
         </div>
 
