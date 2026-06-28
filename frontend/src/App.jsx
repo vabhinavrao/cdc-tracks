@@ -98,7 +98,7 @@ function App() {
     <BrowserRouter>
       <div className="min-h-screen bg-slate-50 text-slate-900 font-sans pb-12">
         <TopNav user={user} onLogout={handleLogout} />
-        <main className="max-w-7xl mx-auto pt-6 px-4 sm:px-6 lg:px-8">
+        <main className="max-w-[1700px] mx-auto pt-6 px-4 sm:px-6 lg:px-8">
           <Routes>
             {/* Explore page remains public */}
             <Route path="/" element={<ExploreTracks user={user} />} />

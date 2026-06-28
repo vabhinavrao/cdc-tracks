@@ -12,6 +12,7 @@ const CDCDashboard = ({ user }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [selectedSemester, setSelectedSemester] = useState('All Semesters');
+  const [hoveredTest, setHoveredTest] = useState(null);
 
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -329,19 +330,26 @@ const CDCDashboard = ({ user }) => {
           </div>
 
           {/* SVG Trend Line Chart */}
-          <div className="relative w-full h-48 my-2 pt-4">
+          <div className="relative w-full h-48 my-2 pt-6">
+            {/* Crisp Un-stretched Milestone Text Labels */}
+            <div className="absolute top-0 left-0 right-0 h-4 pointer-events-none z-10">
+              <span className="absolute -translate-x-1/2 text-[10px] font-extrabold text-purple-600 tracking-tight whitespace-nowrap" style={{ left: `${(8 / 29) * 100}%` }}>
+                Post Assessment I
+              </span>
+              <span className="absolute -translate-x-1/2 text-[10px] font-extrabold text-purple-600 tracking-tight whitespace-nowrap" style={{ left: `${(22 / 29) * 100}%` }}>
+                Post Assessment II
+              </span>
+            </div>
+
             <svg className="w-full h-full overflow-visible" viewBox="0 0 500 150" preserveAspectRatio="none">
               {/* Grid lines */}
               <line x1="0" y1="30" x2="500" y2="30" stroke="#f1f5f9" strokeDasharray="4 4" />
               <line x1="0" y1="75" x2="500" y2="75" stroke="#f1f5f9" strokeDasharray="4 4" />
               <line x1="0" y1="120" x2="500" y2="120" stroke="#f1f5f9" strokeDasharray="4 4" />
 
-              {/* Milestone vertical dashed lines */}
-              <line x1="150" y1="0" x2="150" y2="140" stroke="#a855f7" strokeDasharray="3 3" opacity="0.6" />
-              <text x="150" y="-5" textAnchor="middle" fill="#a855f7" fontSize="9" fontWeight="bold">Post Assessment I</text>
-
-              <line x1="380" y1="0" x2="380" y2="140" stroke="#a855f7" strokeDasharray="3 3" opacity="0.6" />
-              <text x="380" y="-5" textAnchor="middle" fill="#a855f7" fontSize="9" fontWeight="bold">Post Assessment II</text>
+              {/* Dynamic Milestone vertical dashed lines perfectly aligned to dots */}
+              <line x1={(8 / 29) * 500} y1="0" x2={(8 / 29) * 500} y2="140" stroke="#a855f7" strokeDasharray="3 3" opacity="0.5" strokeWidth="1.5" />
+              <line x1={(22 / 29) * 500} y1="0" x2={(22 / 29) * 500} y2="140" stroke="#a855f7" strokeDasharray="3 3" opacity="0.5" strokeWidth="1.5" />
 
               {/* Polyline path connecting test scores */}
               {(() => {
@@ -355,11 +363,28 @@ const CDCDashboard = ({ user }) => {
                   <>
                     <polyline fill="none" stroke="#10b981" strokeWidth="2.5" points={points} strokeLinecap="round" strokeLinejoin="round" />
                     {testList.map((t, i) => {
-                      if (t.isUnattempted) return null;
                       const x = (i / 29) * 500;
-                      const y = 140 - (t.score / 100) * 120;
+                      const score = t.isUnattempted ? 30 : t.score;
+                      const y = 140 - (score / 100) * 120;
+                      const isHovered = hoveredTest?.num === t.num;
+
                       return (
-                        <circle key={i} cx={x} cy={y} r="3" fill="#ffffff" stroke="#10b981" strokeWidth="2" />
+                        <g key={i} className="cursor-pointer" onMouseEnter={() => setHoveredTest({...t, x, y})} onMouseLeave={() => setHoveredTest(null)}>
+                          {/* Invisible larger target for easy hovering */}
+                          <circle cx={x} cy={y} r="10" fill="transparent" />
+                          
+                          {!t.isUnattempted && (
+                            <circle 
+                              cx={x} 
+                              cy={y} 
+                              r={isHovered ? "5" : "3.5"} 
+                              fill={isHovered ? "#10b981" : "#ffffff"} 
+                              stroke="#10b981" 
+                              strokeWidth={isHovered ? "3" : "2"} 
+                              className="transition-all duration-150"
+                            />
+                          )}
+                        </g>
                       );
                     })}
                   </>
@@ -367,12 +392,26 @@ const CDCDashboard = ({ user }) => {
               })()}
             </svg>
 
-            {/* Top Peak Score Callout Pill */}
-            {topPeakTest && (
-              <div className="absolute top-6 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-[10px] px-2.5 py-1 rounded-lg shadow-md flex items-center gap-1 font-bold">
-                <span>{topPeakTest.name}: {topPeakTest.score}%</span>
-              </div>
-            )}
+            {/* Dynamic Hover Tooltip */}
+            {(() => {
+              const active = hoveredTest || (topPeakTest ? { ...topPeakTest, x: (testList.findIndex(t=>t.num===topPeakTest.num)/29)*100 } : null);
+              if (!active) return null;
+              
+              const leftPct = hoveredTest ? (hoveredTest.x / 500) * 100 : active.x;
+              const isUnatt = active.isUnattempted;
+
+              return (
+                <div 
+                  className="absolute top-2 transition-all duration-150 -translate-x-1/2 pointer-events-none z-10"
+                  style={{ left: `${Math.max(10, Math.min(90, leftPct))}%` }}
+                >
+                  <div className="bg-slate-900 text-white text-[11px] px-3 py-1.5 rounded-xl shadow-xl flex items-center gap-1.5 font-bold border border-slate-700 whitespace-nowrap">
+                    <span className="text-emerald-400">{active.name}:</span>
+                    <span>{isUnatt ? 'Unattempted' : `${active.score}%`}</span>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
 
           {/* Axis Labels */}
@@ -668,11 +707,6 @@ const CDCDashboard = ({ user }) => {
                 ))}
               </ul>
             </div>
-          </div>
-
-          <div className="mt-6 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400 font-medium">
-            <span>AI Curriculum Recommendations</span>
-            <ArrowUpRight size={14} className="text-slate-400" />
           </div>
         </div>
 
