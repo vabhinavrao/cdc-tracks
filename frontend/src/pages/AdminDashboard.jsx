@@ -236,21 +236,24 @@ const AdminDashboard = ({ user }) => {
     return (
       <div className="space-y-6 text-left">
         
-        {/* Modal Top Floating Bar */}
-        <div className="bg-slate-900 text-white p-4 rounded-2xl flex items-center justify-between sticky top-0 z-20 shadow-lg">
+        {/* Modal Header Bar - Flush with Modal Card Edges */}
+        <div className="-mx-6 -mt-6 sm:-mx-8 sm:-mt-8 p-4 sm:p-6 bg-slate-900 text-white rounded-t-3xl sticky top-0 z-30 flex items-center justify-between shadow-md mb-6 border-b border-slate-800">
           <div className="flex items-center gap-3">
-            <span className="px-3 py-1 bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 rounded-full text-xs font-bold uppercase">
+            <span className="px-3 py-1 bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 rounded-full text-xs font-bold uppercase tracking-wider">
               Student CDC Inspection
             </span>
             <span className="text-xs text-slate-300 font-mono hidden sm:inline">{student.roll_number}</span>
           </div>
           <button
             onClick={closeStudentModal}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer"
+            className="flex items-center gap-1.5 px-3.5 py-1.5 bg-white/10 hover:bg-white/20 active:bg-white/30 text-white rounded-xl text-xs font-bold transition-all cursor-pointer shadow-sm"
+            title="Close Modal (Esc)"
           >
-            <X size={16} /> Close View (Esc)
+            <X size={16} />
+            <span>Close View (Esc)</span>
           </button>
         </div>
+
 
         {/* Hero Student Profile Header & Metrics */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
@@ -877,12 +880,13 @@ const AdminDashboard = ({ user }) => {
       {selectedStudentRoll && (
         <div 
           onClick={handleBackdropClick}
-          className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-6 bg-slate-950/70 overflow-y-auto"
+          className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-6 bg-slate-950/80 overflow-y-auto animate-fade-in"
         >
           <div 
             onClick={(e) => e.stopPropagation()}
             className="bg-white rounded-3xl max-w-6xl w-full max-h-[92vh] overflow-y-auto shadow-2xl border border-slate-200 p-6 sm:p-8 relative my-auto"
           >
+
             {detailLoading ? (
               <div className="py-24 text-center text-slate-500 font-medium">
                 <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
