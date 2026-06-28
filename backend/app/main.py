@@ -44,14 +44,58 @@ def startup_event():
     
     # 1.5 Try to add new columns if the table already existed previously
     db = SessionLocal()
-    for col_def in ["name VARCHAR", "picture VARCHAR", "role VARCHAR DEFAULT 'student'", "assigned_branch VARCHAR"]:
+    user_cols = ["name VARCHAR", "picture VARCHAR", "role VARCHAR DEFAULT 'student'", "assigned_branch VARCHAR", "status VARCHAR DEFAULT 'active'", "current_academic_year INTEGER"]
+    for col_def in user_cols:
         try:
             from sqlalchemy import text
             db.execute(text(f"ALTER TABLE users ADD COLUMN {col_def}"))
             db.commit()
         except Exception:
             db.rollback()
-            
+
+    cdc_cols = ["status VARCHAR DEFAULT 'active'"]
+    for col_def in cdc_cols:
+        try:
+            from sqlalchemy import text
+            db.execute(text(f"ALTER TABLE cdc_performance ADD COLUMN {col_def}"))
+            db.commit()
+        except Exception:
+            db.rollback()
+
+    # 1.5.1 Ensure default BatchSchedule exists and has clean timestamps
+    try:
+        from app.models import BatchSchedule
+        from datetime import datetime, timedelta
+        schedules = db.query(BatchSchedule).all()
+        if not schedules:
+            now = datetime.utcnow()
+            start_dt = (now - timedelta(days=5)).replace(hour=0, minute=0, second=0)
+            end_dt = (now + timedelta(days=30)).replace(hour=23, minute=59, second=59)
+            new_bs = BatchSchedule(
+                batch_year="2024-2028",
+                track_selection_start=start_dt,
+                track_selection_end=end_dt,
+                contact_email="support.cdc@hitam.org",
+                year_1_start="2024-08-01", year_1_end="2025-05-31",
+                year_2_start="2025-08-01", year_2_end="2026-05-31",
+                year_3_start="2026-08-01", year_3_end="2027-05-31",
+                year_4_start="2027-08-01", year_4_end="2028-05-31",
+                sem_1_start="2026-08-01", sem_1_end="2026-12-31",
+                sem_2_start="2027-01-15", sem_2_end="2027-05-31"
+            )
+            db.add(new_bs)
+        else:
+            for s in schedules:
+                if s.track_selection_start:
+                    s.track_selection_start = s.track_selection_start.replace(hour=0, minute=0, second=0)
+                if s.track_selection_end:
+                    s.track_selection_end = s.track_selection_end.replace(hour=23, minute=59, second=59)
+        db.commit()
+    except Exception as e:
+        print(f"Default batch schedule notice: {e}")
+        db.rollback()
+
+
     # 1.6 Seed CDC Performance data
 
     try:

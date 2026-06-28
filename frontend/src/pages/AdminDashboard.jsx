@@ -5,12 +5,16 @@ import axios from 'axios';
 import { 
   Users, Award, BookOpen, Search, Filter, RefreshCw, 
   ChevronRight, ChevronLeft, X, User, CheckCircle2, AlertCircle, TrendingUp, ShieldCheck, Building2,
-  Target, Layers, BarChart3, Mail, CheckCircle, AlertTriangle
+  Target, Layers, BarChart3, Mail, CheckCircle, AlertTriangle, LayoutDashboard, LineChart
 } from 'lucide-react';
+import DetailedDashboard from '../components/admin/DetailedDashboard';
+import TrackBatchControlPanel from '../components/admin/TrackBatchControlPanel';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 const AdminDashboard = ({ user }) => {
+  const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'detailed' | 'control'
+
   const [analytics, setAnalytics] = useState(null);
   const [students, setStudents] = useState([]);
   const [selectedBranch, setSelectedBranch] = useState('ALL');
@@ -343,90 +347,112 @@ const AdminDashboard = ({ user }) => {
               </div>
             </div>
 
-            {/* SVG Trend Line Chart */}
-            <div className="relative w-full h-48 my-2 pt-6">
-              {/* Crisp Un-stretched Milestone Text Labels */}
-              <div className="absolute top-0 left-0 right-0 h-4 pointer-events-none z-10">
-                <span className="absolute -translate-x-1/2 text-[10px] font-extrabold text-purple-600 tracking-tight whitespace-nowrap" style={{ left: `${(8 / 29) * 100}%` }}>
-                  Post Assessment I
-                </span>
-                <span className="absolute -translate-x-1/2 text-[10px] font-extrabold text-purple-600 tracking-tight whitespace-nowrap" style={{ left: `${(22 / 29) * 100}%` }}>
-                  Post Assessment II
-                </span>
+            {/* SVG Trend Line Chart with Y-axis */}
+            <div className="flex items-center gap-2 my-2">
+              {/* Y-axis percentage labels */}
+              <div className="flex flex-col justify-between h-36 text-[10px] text-slate-400 font-extrabold pr-1 shrink-0 pt-6 select-none">
+                <span>100%</span>
+                <span>50%</span>
+                <span>0%</span>
               </div>
 
-              <svg className="w-full h-full overflow-visible" viewBox="0 0 500 150" preserveAspectRatio="none">
-                {/* Grid lines */}
-                <line x1="0" y1="30" x2="500" y2="30" stroke="#f1f5f9" strokeDasharray="4 4" />
-                <line x1="0" y1="75" x2="500" y2="75" stroke="#f1f5f9" strokeDasharray="4 4" />
-                <line x1="0" y1="120" x2="500" y2="120" stroke="#f1f5f9" strokeDasharray="4 4" />
+              <div className="relative w-full h-48 pt-6 flex-1">
+                {/* Crisp Un-stretched Milestone Text Labels */}
+                <div className="absolute top-0 left-0 right-0 h-4 pointer-events-none z-10">
+                  <span className="absolute -translate-x-1/2 text-[10px] font-extrabold text-purple-600 tracking-tight whitespace-nowrap" style={{ left: `${(8 / 29) * 100}%` }}>
+                    Post Assessment I
+                  </span>
+                  <span className="absolute -translate-x-1/2 text-[10px] font-extrabold text-purple-600 tracking-tight whitespace-nowrap" style={{ left: `${(22 / 29) * 100}%` }}>
+                    Post Assessment II
+                  </span>
+                </div>
 
-                {/* Dynamic Milestone vertical dashed lines perfectly aligned to dots */}
-                <line x1={(8 / 29) * 500} y1="0" x2={(8 / 29) * 500} y2="140" stroke="#a855f7" strokeDasharray="3 3" opacity="0.5" strokeWidth="1.5" />
-                <line x1={(22 / 29) * 500} y1="0" x2={(22 / 29) * 500} y2="140" stroke="#a855f7" strokeDasharray="3 3" opacity="0.5" strokeWidth="1.5" />
+                <svg className="w-full h-full overflow-visible" viewBox="0 0 800 150" preserveAspectRatio="none">
+                  <defs>
+                    <linearGradient id="emeraldTrendGradAdmin" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#10b981" stopOpacity="0.2" />
+                      <stop offset="100%" stopColor="#10b981" stopOpacity="0.0" />
+                    </linearGradient>
+                  </defs>
 
-                {/* Polyline path connecting test scores */}
+                  {/* Grid lines */}
+                  <line x1="0" y1="30" x2="800" y2="30" stroke="#f1f5f9" strokeDasharray="4 4" vectorEffect="non-scaling-stroke" />
+                  <line x1="0" y1="75" x2="800" y2="75" stroke="#f1f5f9" strokeDasharray="4 4" vectorEffect="non-scaling-stroke" />
+                  <line x1="0" y1="120" x2="800" y2="120" stroke="#f1f5f9" strokeDasharray="4 4" vectorEffect="non-scaling-stroke" />
+
+                  {/* Dynamic Milestone vertical dashed lines perfectly aligned to dots */}
+                  <line x1={(8 / 29) * 800} y1="0" x2={(8 / 29) * 800} y2="140" stroke="#a855f7" strokeDasharray="3 3" opacity="0.5" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+                  <line x1={(22 / 29) * 800} y1="0" x2={(22 / 29) * 800} y2="140" stroke="#a855f7" strokeDasharray="3 3" opacity="0.5" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+
+                  {/* Polyline path connecting test scores */}
+                  {(() => {
+                    const pts = testList.map((t, i) => {
+                      const x = (i / 29) * 800;
+                      const score = t.isUnattempted ? 0 : t.score;
+                      const y = 140 - (score / 100) * 120;
+                      return { x, y, score, isUnattempted: t.isUnattempted };
+                    });
+                    
+                    const pointsStr = pts.map(p => `${p.x},${p.y}`).join(' ');
+                    const areaStr = `0,140 ${pointsStr} 800,140`;
+
+                    return (
+                      <>
+                        <polygon fill="url(#emeraldTrendGradAdmin)" points={areaStr} />
+                        <polyline fill="none" stroke="#10b981" strokeWidth="2.5" points={pointsStr} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+                        {testList.map((t, i) => {
+                          const p = pts[i];
+                          const isHovered = hoveredTest?.num === t.num;
+
+                          return (
+                            <g key={i} className="cursor-pointer" onMouseEnter={() => setHoveredTest({...t, x: p.x, y: p.y})} onMouseLeave={() => setHoveredTest(null)}>
+                              {/* Invisible larger target for easy hovering */}
+                              <circle cx={p.x} cy={p.y} r="12" fill="transparent" />
+                              
+                              {!t.isUnattempted && (
+                                <circle 
+                                  cx={p.x} 
+                                  cy={p.y} 
+                                  r={isHovered ? "5" : "3.5"} 
+                                  fill={isHovered ? "#10b981" : "#ffffff"} 
+                                  stroke="#10b981" 
+                                  strokeWidth={isHovered ? "3" : "2"} 
+                                  vectorEffect="non-scaling-stroke"
+                                  className="transition-all duration-150"
+                                />
+                              )}
+                            </g>
+                          );
+                        })}
+                      </>
+                    );
+                  })()}
+                </svg>
+
+
+                {/* Dynamic Hover Tooltip */}
                 {(() => {
-                  const points = testList.map((t, i) => {
-                    const x = (i / 29) * 500;
-                    const score = t.isUnattempted ? 30 : t.score;
-                    const y = 140 - (score / 100) * 120;
-                    return `${x},${y}`;
-                  }).join(' ');
-                  return (
-                    <>
-                      <polyline fill="none" stroke="#10b981" strokeWidth="2.5" points={points} strokeLinecap="round" strokeLinejoin="round" />
-                      {testList.map((t, i) => {
-                        const x = (i / 29) * 500;
-                        const score = t.isUnattempted ? 30 : t.score;
-                        const y = 140 - (score / 100) * 120;
-                        const isHovered = hoveredTest?.num === t.num;
+                  const active = hoveredTest || (topPeakTest ? { ...topPeakTest, x: (testList.findIndex(t=>t.num===topPeakTest.num)/29)*100 } : null);
+                  if (!active) return null;
+                  
+                  const leftPct = hoveredTest ? (hoveredTest.x / 500) * 100 : active.x;
+                  const isUnatt = active.isUnattempted;
 
-                        return (
-                          <g key={i} className="cursor-pointer" onMouseEnter={() => setHoveredTest({...t, x, y})} onMouseLeave={() => setHoveredTest(null)}>
-                            {/* Invisible larger target for easy hovering */}
-                            <circle cx={x} cy={y} r="10" fill="transparent" />
-                            
-                            {!t.isUnattempted && (
-                              <circle 
-                                cx={x} 
-                                cy={y} 
-                                r={isHovered ? "5" : "3.5"} 
-                                fill={isHovered ? "#10b981" : "#ffffff"} 
-                                stroke="#10b981" 
-                                strokeWidth={isHovered ? "3" : "2"} 
-                                className="transition-all duration-150"
-                              />
-                            )}
-                          </g>
-                        );
-                      })}
-                    </>
+                  return (
+                    <div 
+                      className="absolute top-2 transition-all duration-150 -translate-x-1/2 pointer-events-none z-10"
+                      style={{ left: `${Math.max(10, Math.min(90, leftPct))}%` }}
+                    >
+                      <div className="bg-slate-900 text-white text-[11px] px-3 py-1.5 rounded-xl shadow-xl flex items-center gap-1.5 font-bold border border-slate-700 whitespace-nowrap">
+                        <span className="text-emerald-400">{active.name}:</span>
+                        <span>{isUnatt ? 'Unattempted' : `${active.score}%`}</span>
+                      </div>
+                    </div>
                   );
                 })()}
-              </svg>
-
-              {/* Dynamic Hover Tooltip */}
-              {(() => {
-                const active = hoveredTest || (topPeakTest ? { ...topPeakTest, x: (testList.findIndex(t=>t.num===topPeakTest.num)/29)*100 } : null);
-                if (!active) return null;
-                
-                const leftPct = hoveredTest ? (hoveredTest.x / 500) * 100 : active.x;
-                const isUnatt = active.isUnattempted;
-
-                return (
-                  <div 
-                    className="absolute top-2 transition-all duration-150 -translate-x-1/2 pointer-events-none z-10"
-                    style={{ left: `${Math.max(10, Math.min(90, leftPct))}%` }}
-                  >
-                    <div className="bg-slate-900 text-white text-[11px] px-3 py-1.5 rounded-xl shadow-xl flex items-center gap-1.5 font-bold border border-slate-700 whitespace-nowrap">
-                      <span className="text-emerald-400">{active.name}:</span>
-                      <span>{isUnatt ? 'Unattempted' : `${active.score}%`}</span>
-                    </div>
-                  </div>
-                );
-              })()}
+              </div>
             </div>
+
 
             {/* Axis Labels */}
             <div className="flex justify-between text-[10px] text-slate-400 font-semibold pt-2 border-t border-slate-100">
@@ -646,6 +672,56 @@ const AdminDashboard = ({ user }) => {
           </div>
         </div>
       </div>
+
+      {/* Admin Navigation Tabs */}
+      <div className="flex items-center gap-3 border-b border-slate-200 pb-3">
+        <button
+          onClick={() => setActiveTab('overview')}
+          className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl text-xs font-bold transition-all cursor-pointer ${
+            activeTab === 'overview'
+              ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
+              : 'bg-white hover:bg-slate-100 text-slate-600 border border-slate-200'
+          }`}
+        >
+          <LayoutDashboard size={16} />
+          <span>Overview</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('detailed')}
+          className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl text-xs font-bold transition-all cursor-pointer ${
+            activeTab === 'detailed'
+              ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
+              : 'bg-white hover:bg-slate-100 text-slate-600 border border-slate-200'
+          }`}
+        >
+          <LineChart size={16} />
+          <span>Detailed Dashboard</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('control')}
+          className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl text-xs font-bold transition-all cursor-pointer ${
+            activeTab === 'control'
+              ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
+              : 'bg-white hover:bg-slate-100 text-slate-600 border border-slate-200'
+          }`}
+        >
+          <Layers size={16} />
+          <span>Track & Batch Control</span>
+        </button>
+      </div>
+
+      {activeTab === 'control' ? (
+        <TrackBatchControlPanel user={user} />
+      ) : activeTab === 'detailed' ? (
+        <DetailedDashboard 
+          user={user} 
+          selectedBranch={selectedBranch} 
+          onSelectStudent={openStudentModal} 
+        />
+      ) : (
+        <div className="space-y-8">
 
       {/* Controls Bar & Sync */}
       <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -965,7 +1041,8 @@ const AdminDashboard = ({ user }) => {
           </div>
         )}
       </div>
-
+      </div>
+      )}
 
       {/* Full Student Detailed CDC Dashboard Modal View */}
       {selectedStudentRoll && createPortal(

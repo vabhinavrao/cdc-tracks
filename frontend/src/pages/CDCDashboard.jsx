@@ -318,58 +318,78 @@ const CDCDashboard = ({ user }) => {
             </div>
           </div>
 
-          {/* SVG Trend Line Chart */}
-          <div className="relative w-full h-48 my-2 pt-6">
-            {/* Crisp Un-stretched Milestone Text Labels */}
-            <div className="absolute top-0 left-0 right-0 h-4 pointer-events-none z-10">
-              <span className="absolute -translate-x-1/2 text-[10px] font-extrabold text-purple-600 tracking-tight whitespace-nowrap" style={{ left: `${(8 / 29) * 100}%` }}>
-                Post Assessment I
-              </span>
-              <span className="absolute -translate-x-1/2 text-[10px] font-extrabold text-purple-600 tracking-tight whitespace-nowrap" style={{ left: `${(22 / 29) * 100}%` }}>
-                Post Assessment II
-              </span>
+          {/* SVG Trend Line Chart with Y-axis */}
+          <div className="flex items-center gap-2 my-2">
+            {/* Y-axis percentage labels */}
+            <div className="flex flex-col justify-between h-36 text-[10px] text-slate-400 font-extrabold pr-1 shrink-0 pt-6 select-none">
+              <span>100%</span>
+              <span>50%</span>
+              <span>0%</span>
             </div>
 
-            <svg className="w-full h-full overflow-visible" viewBox="0 0 500 150" preserveAspectRatio="none">
+            <div className="relative w-full h-48 pt-6 flex-1">
+              {/* Crisp Un-stretched Milestone Text Labels */}
+              <div className="absolute top-0 left-0 right-0 h-4 pointer-events-none z-10">
+                <span className="absolute -translate-x-1/2 text-[10px] font-extrabold text-purple-600 tracking-tight whitespace-nowrap" style={{ left: `${(8 / 29) * 100}%` }}>
+                  Post Assessment I
+                </span>
+                <span className="absolute -translate-x-1/2 text-[10px] font-extrabold text-purple-600 tracking-tight whitespace-nowrap" style={{ left: `${(22 / 29) * 100}%` }}>
+                  Post Assessment II
+                </span>
+              </div>
+
+              <svg className="w-full h-full overflow-visible" viewBox="0 0 800 150" preserveAspectRatio="none">
+
+              <defs>
+                <linearGradient id="emeraldTrendGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#10b981" stopOpacity="0.2" />
+                  <stop offset="100%" stopColor="#10b981" stopOpacity="0.0" />
+                </linearGradient>
+              </defs>
+
               {/* Grid lines */}
-              <line x1="0" y1="30" x2="500" y2="30" stroke="#f1f5f9" strokeDasharray="4 4" />
-              <line x1="0" y1="75" x2="500" y2="75" stroke="#f1f5f9" strokeDasharray="4 4" />
-              <line x1="0" y1="120" x2="500" y2="120" stroke="#f1f5f9" strokeDasharray="4 4" />
+              <line x1="0" y1="30" x2="800" y2="30" stroke="#f1f5f9" strokeDasharray="4 4" vectorEffect="non-scaling-stroke" />
+              <line x1="0" y1="75" x2="800" y2="75" stroke="#f1f5f9" strokeDasharray="4 4" vectorEffect="non-scaling-stroke" />
+              <line x1="0" y1="120" x2="800" y2="120" stroke="#f1f5f9" strokeDasharray="4 4" vectorEffect="non-scaling-stroke" />
 
               {/* Dynamic Milestone vertical dashed lines perfectly aligned to dots */}
-              <line x1={(8 / 29) * 500} y1="0" x2={(8 / 29) * 500} y2="140" stroke="#a855f7" strokeDasharray="3 3" opacity="0.5" strokeWidth="1.5" />
-              <line x1={(22 / 29) * 500} y1="0" x2={(22 / 29) * 500} y2="140" stroke="#a855f7" strokeDasharray="3 3" opacity="0.5" strokeWidth="1.5" />
+              <line x1={(8 / 29) * 800} y1="0" x2={(8 / 29) * 800} y2="140" stroke="#a855f7" strokeDasharray="3 3" opacity="0.5" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+              <line x1={(22 / 29) * 800} y1="0" x2={(22 / 29) * 800} y2="140" stroke="#a855f7" strokeDasharray="3 3" opacity="0.5" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
 
               {/* Polyline path connecting test scores */}
               {(() => {
-                const points = testList.map((t, i) => {
-                  const x = (i / 29) * 500;
-                  const score = t.isUnattempted ? 30 : t.score;
+                const pts = testList.map((t, i) => {
+                  const x = (i / 29) * 800;
+                  const score = t.isUnattempted ? 0 : t.score;
                   const y = 140 - (score / 100) * 120;
-                  return `${x},${y}`;
-                }).join(' ');
+                  return { x, y, score, isUnattempted: t.isUnattempted };
+                });
+                
+                const pointsStr = pts.map(p => `${p.x},${p.y}`).join(' ');
+                const areaStr = `0,140 ${pointsStr} 800,140`;
+
                 return (
                   <>
-                    <polyline fill="none" stroke="#10b981" strokeWidth="2.5" points={points} strokeLinecap="round" strokeLinejoin="round" />
+                    <polygon fill="url(#emeraldTrendGrad)" points={areaStr} />
+                    <polyline fill="none" stroke="#10b981" strokeWidth="2.5" points={pointsStr} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
                     {testList.map((t, i) => {
-                      const x = (i / 29) * 500;
-                      const score = t.isUnattempted ? 30 : t.score;
-                      const y = 140 - (score / 100) * 120;
+                      const p = pts[i];
                       const isHovered = hoveredTest?.num === t.num;
 
                       return (
-                        <g key={i} className="cursor-pointer" onMouseEnter={() => setHoveredTest({...t, x, y})} onMouseLeave={() => setHoveredTest(null)}>
+                        <g key={i} className="cursor-pointer" onMouseEnter={() => setHoveredTest({...t, x: p.x, y: p.y})} onMouseLeave={() => setHoveredTest(null)}>
                           {/* Invisible larger target for easy hovering */}
-                          <circle cx={x} cy={y} r="10" fill="transparent" />
+                          <circle cx={p.x} cy={p.y} r="12" fill="transparent" />
                           
                           {!t.isUnattempted && (
                             <circle 
-                              cx={x} 
-                              cy={y} 
+                              cx={p.x} 
+                              cy={p.y} 
                               r={isHovered ? "5" : "3.5"} 
                               fill={isHovered ? "#10b981" : "#ffffff"} 
                               stroke="#10b981" 
                               strokeWidth={isHovered ? "3" : "2"} 
+                              vectorEffect="non-scaling-stroke"
                               className="transition-all duration-150"
                             />
                           )}
@@ -380,6 +400,7 @@ const CDCDashboard = ({ user }) => {
                 );
               })()}
             </svg>
+
 
             {/* Dynamic Hover Tooltip */}
             {(() => {
@@ -401,9 +422,11 @@ const CDCDashboard = ({ user }) => {
                 </div>
               );
             })()}
+            </div>
           </div>
 
           {/* Axis Labels */}
+
           <div className="flex justify-between text-[10px] text-slate-400 font-semibold pt-2 border-t border-slate-100">
             <span>Test 1</span>
             <span>Test 5</span>

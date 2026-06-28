@@ -3,8 +3,9 @@ from fastapi import APIRouter, Depends, HTTPException, Header, status
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional
+from datetime import datetime
 from app.database import get_db
-from app.models import User, Track
+from app.models import User, Track, BatchSchedule, TrackSelectionHistory, FinalisedTrack
 from app.utils import calculate_current_year
 from app.services.cdc_service import get_cdc_performance_by_roll
 
@@ -47,6 +48,29 @@ def select_track(
 ):
     track_id = payload.track_id
     
+    # Check student batch schedule and track selection window
+    batch_year = f"{user.joining_year}-{user.graduation_year}"
+    batch_schedule = db.query(BatchSchedule).filter(BatchSchedule.batch_year == batch_year).first()
+    if not batch_schedule:
+        batch_schedule = db.query(BatchSchedule).first()
+
+    now = datetime.utcnow()
+    is_active = True
+    contact_email = "support.cdc@hitam.org"
+    
+    if batch_schedule:
+        contact_email = batch_schedule.contact_email or contact_email
+        if batch_schedule.track_selection_start and now < batch_schedule.track_selection_start:
+            is_active = False
+        if batch_schedule.track_selection_end and now > batch_schedule.track_selection_end:
+            is_active = False
+
+    if not is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Track selection for the semester has ended. Contact: {contact_email} for track changes or related issues."
+        )
+
     # If a track_id is provided, verify it exists in our seeded Tracks table
     if track_id:
         track = db.query(Track).filter(Track.id == track_id).first()
@@ -56,9 +80,45 @@ def select_track(
                 detail=f"Track '{track_id}' not found in database."
             )
             
+    current_academic_year = calculate_current_year(user.joining_year)
+    prev_track = user.selected_track_id
     user.selected_track_id = track_id
     
     try:
+        # Record audit log entry
+        audit = TrackSelectionHistory(
+            roll_number=user.roll_number,
+            student_name=user.name,
+            student_email=user.email,
+            batch_year=batch_year,
+            academic_year=current_academic_year,
+            semester="Active",
+            previous_track_id=prev_track,
+            new_track_id=track_id,
+            timestamp=now
+        )
+        db.add(audit)
+
+        # Mirror/upsert into FinalisedTrack
+        fin = db.query(FinalisedTrack).filter(
+            FinalisedTrack.roll_number == user.roll_number,
+            FinalisedTrack.batch_year == batch_year,
+            FinalisedTrack.academic_year == current_academic_year
+        ).first()
+        if fin:
+            fin.track_id = track_id
+            fin.finalised_at = now
+        else:
+            fin = FinalisedTrack(
+                roll_number=user.roll_number,
+                batch_year=batch_year,
+                academic_year=current_academic_year,
+                semester="Active",
+                track_id=track_id,
+                finalised_at=now
+            )
+            db.add(fin)
+
         db.commit()
         db.refresh(user)
     except Exception as e:
@@ -123,7 +183,29 @@ def get_dashboard_data(
 ):
     # Calculate academic year
     current_academic_year = calculate_current_year(user.joining_year)
+    batch_year = f"{user.joining_year}-{user.graduation_year}"
     
+    # Fetch selection window schedule
+    batch_schedule = db.query(BatchSchedule).filter(BatchSchedule.batch_year == batch_year).first()
+    if not batch_schedule:
+        batch_schedule = db.query(BatchSchedule).first()
+
+    now = datetime.utcnow()
+    is_selection_open = True
+    contact_email = "support.cdc@hitam.org"
+    start_str = None
+    end_str = None
+
+    if batch_schedule:
+        contact_email = batch_schedule.contact_email or contact_email
+        start_str = batch_schedule.track_selection_start.isoformat() if batch_schedule.track_selection_start else None
+        end_str = batch_schedule.track_selection_end.isoformat() if batch_schedule.track_selection_end else None
+
+        if batch_schedule.track_selection_start and now < batch_schedule.track_selection_start:
+            is_selection_open = False
+        if batch_schedule.track_selection_end and now > batch_schedule.track_selection_end:
+            is_selection_open = False
+
     # Retrieve complete details for the selected track
     selected_track_data = None
     if user.selected_track_id:
@@ -152,12 +234,20 @@ def get_dashboard_data(
             "name": user.name,
             "picture": user.picture,
             "selected_track_id": user.selected_track_id,
-            "bookmarked_tracks": user.bookmarked_tracks
+            "bookmarked_tracks": user.bookmarked_tracks,
+            "status": user.status or "active"
         },
         "current_year": current_academic_year,
         "selected_track": selected_track_data,
-        "bookmarked_tracks_data": bookmarked_summaries
+        "bookmarked_tracks_data": bookmarked_summaries,
+        "track_selection_window": {
+            "is_open": is_selection_open,
+            "start_time": start_str,
+            "end_time": end_str,
+            "contact_email": contact_email
+        }
     }
+
 
 @router.get("/cdc-dashboard-data")
 def get_cdc_dashboard_data(

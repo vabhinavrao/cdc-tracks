@@ -1,7 +1,8 @@
 // src/pages/TrackDetails.jsx
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, Target, Clock, CheckCircle2, GraduationCap, ArrowRight, ChevronDown, Calendar, Wrench, Briefcase, Zap, GitMerge, Bookmark, Award } from 'lucide-react';
+import { ArrowLeft, Target, Clock, CheckCircle2, GraduationCap, ArrowRight, ChevronDown, Calendar, Wrench, Briefcase, Zap, GitMerge, Bookmark, Award, Users, X, RefreshCw, AlertCircle } from 'lucide-react';
 import { getTrackBySlug, getPreferredBranchForTrack, isTrackPreferredForBranch } from '../utils/trackLoader';
 import axios from 'axios';
 
@@ -293,8 +294,39 @@ const TrackDetails = ({ user }) => {
   const [isCommitted, setIsCommitted] = useState(false);
   const [isBookmarked, setIsBookmarked] = useState(false);
   const [loadingAction, setLoadingAction] = useState(false);
+  const [selectionWindow, setSelectionWindow] = useState(null);
+  const [studentYear, setStudentYear] = useState(1);
+  const [studentStatus, setStudentStatus] = useState('active');
+
+  // Modal state for commit confirmation
+  const [showCommitModal, setShowCommitModal] = useState(false);
+  const [confirmInput, setConfirmInput] = useState('');
+
+  // Admin state for viewing enrolled students
+  const isAdmin = user?.role === 'super_admin' || user?.role === 'branch_admin';
+  const [showEnrolledModal, setShowEnrolledModal] = useState(false);
+  const [enrolledStudents, setEnrolledStudents] = useState([]);
+  const [enrolledLoading, setEnrolledLoading] = useState(false);
+  const [enrolledError, setEnrolledError] = useState(null);
 
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
+  const handleOpenEnrolledModal = async () => {
+    setShowEnrolledModal(true);
+    setEnrolledLoading(true);
+    setEnrolledError(null);
+    try {
+      const res = await axios.get(`${API_URL}/api/admin/track-students/${slug}`, {
+        headers: { Authorization: `Bearer ${user.email}` }
+      });
+      setEnrolledStudents(res.data.students || []);
+    } catch (err) {
+      console.error("Failed to fetch enrolled students:", err);
+      setEnrolledError("Could not load enrolled students list.");
+    } finally {
+      setEnrolledLoading(false);
+    }
+  };
 
   // Fetch current commit/bookmark status from backend on load
   useEffect(() => {
@@ -307,6 +339,11 @@ const TrackDetails = ({ user }) => {
         const profile = response.data.student;
         setIsCommitted(profile.selected_track_id === slug);
         setIsBookmarked(profile.bookmarked_tracks?.includes(slug) || false);
+        setStudentYear(response.data.current_year || 1);
+        setStudentStatus(profile.status || 'active');
+        if (response.data.track_selection_window) {
+          setSelectionWindow(response.data.track_selection_window);
+        }
       } catch (err) {
         console.error("Failed to load student status for track:", err);
       }
@@ -314,11 +351,26 @@ const TrackDetails = ({ user }) => {
     fetchStudentStatus();
   }, [user, slug, API_URL]);
 
-  const handleCommit = async () => {
+
+  const handleCommit = () => {
     if (!user) return;
+    if (selectionWindow && selectionWindow.is_open === false) {
+      alert(`🔒 Track selection for the semester has ended.\n\nFor track changes or related issues, please contact: ${selectionWindow.contact_email}`);
+      return;
+    }
+    if (!isCommitted) {
+      setConfirmInput('');
+      setShowCommitModal(true);
+    } else {
+      executeCommit(null);
+    }
+  };
+
+  const executeCommit = async (targetTrackIdOverride) => {
     setLoadingAction(true);
+    setShowCommitModal(false);
     try {
-      const targetTrackId = isCommitted ? null : slug;
+      const targetTrackId = targetTrackIdOverride !== undefined ? targetTrackIdOverride : (isCommitted ? null : slug);
       await axios.post(`${API_URL}/api/student/select-track`, 
         { track_id: targetTrackId },
         { headers: { Authorization: `Bearer ${user.email}` } }
@@ -326,11 +378,13 @@ const TrackDetails = ({ user }) => {
       setIsCommitted(!isCommitted);
     } catch (err) {
       console.error("Failed to commit to track:", err);
-      alert("Error updating track selection: " + (err.response?.data?.detail || err.message));
+      alert(err.response?.data?.detail || ("Error updating track selection: " + err.message));
     } finally {
       setLoadingAction(false);
     }
   };
+
+
 
   const handleBookmark = async () => {
     if (!user) return;
@@ -387,48 +441,77 @@ const TrackDetails = ({ user }) => {
             <span className="inline-flex items-center px-3 py-1 rounded-full bg-blue-50 text-blue-700 text-xs font-bold border border-blue-100 shadow-sm">
               Preferably for {getPreferredBranchForTrack(track.slug)} students
             </span>
-            {user && isTrackPreferredForBranch(track.slug, user.branch) && (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-bold border border-emerald-100 shadow-sm animate-pulse">
+            {user && isTrackPreferredForBranch(track.slug, user.branch) ? (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-bold border border-emerald-100 shadow-sm">
                 <Award size={12} className="shrink-0" />
                 Matches your branch
               </span>
+            ) : (
+              user && !isAdmin && (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 text-amber-800 text-xs font-bold border border-amber-200 shadow-sm">
+                  <AlertCircle size={12} className="shrink-0 text-amber-600" />
+                  Different from enrolled branch ({user.branch})
+                </span>
+              )
             )}
           </div>
           <p className="text-lg text-slate-600">Select a semester below to view its curriculum and objectives.</p>
+
+          {/* Branch Mismatch Disclaimer Banner */}
+          {user && !isAdmin && !isTrackPreferredForBranch(track.slug, user.branch) && (
+            <div className="mt-4 p-4 bg-amber-50 rounded-2xl border border-amber-200 text-amber-900 text-xs md:text-sm font-semibold flex items-start gap-3 shadow-xs">
+              <AlertCircle size={20} className="text-amber-600 shrink-0 mt-0.5" />
+              <div>
+                <strong className="font-extrabold text-amber-950 block mb-0.5">⚠️ Branch Alignment Disclaimer:</strong>
+                <span>This track ({track.track_name}) is designated primarily for <strong>{getPreferredBranchForTrack(track.slug)}</strong> students. Your registered branch is <strong>{user.branch}</strong>. You are allowed to commit to this track, but please note it may differ from your core department curriculum.</span>
+              </div>
+            </div>
+          )}
         </div>
+
         
-        {/* Commit & Bookmark Actions */}
+        {/* Commit & Bookmark Actions / Admin View Enrolled Students */}
         <div className="flex items-center gap-3 shrink-0">
           {user ? (
-            <>
-              {/* Commit Button */}
+            isAdmin ? (
               <button
-                onClick={handleCommit}
-                disabled={loadingAction}
-                className={`px-5 py-3 rounded-xl font-bold text-sm flex items-center gap-2 transition-all duration-300 shadow-sm cursor-pointer border ${
-                  isCommitted
-                    ? 'border-blue-600 text-blue-600 bg-white hover:bg-blue-50/50'
-                    : 'border-transparent bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/10'
-                }`}
+                onClick={handleOpenEnrolledModal}
+                className="px-5 py-3 rounded-xl font-bold text-sm flex items-center gap-2 transition-all duration-300 shadow-md bg-blue-600 hover:bg-blue-700 text-white cursor-pointer shadow-blue-500/20"
               >
-                {isCommitted ? <CheckCircle2 size={18} /> : <Target size={18} />}
-                {isCommitted ? 'Committed to Track' : 'Commit to Track'}
+                <Users size={18} />
+                <span>View Enrolled Students</span>
               </button>
+            ) : (
+              <>
+                {/* Commit Button */}
+                <button
+                  onClick={handleCommit}
+                  disabled={loadingAction}
+                  className={`px-5 py-3 rounded-xl font-bold text-sm flex items-center gap-2 transition-all duration-300 shadow-sm cursor-pointer border ${
+                    isCommitted
+                      ? 'border-blue-600 text-blue-600 bg-white hover:bg-blue-50/50'
+                      : 'border-transparent bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/10'
+                  }`}
+                >
+                  {isCommitted ? <CheckCircle2 size={18} /> : <Target size={18} />}
+                  {isCommitted ? 'Committed to Track' : 'Commit to Track'}
+                </button>
 
-              {/* Bookmark Button */}
-              <button
-                onClick={handleBookmark}
-                disabled={loadingAction}
-                className={`p-3 rounded-xl border font-bold transition-all duration-300 cursor-pointer ${
-                  isBookmarked
-                    ? 'bg-amber-500 border-amber-500 text-white shadow-sm shadow-amber-500/10'
-                    : 'bg-white border-slate-200 text-slate-500 hover:border-amber-400 hover:text-amber-500'
-                }`}
-                title={isBookmarked ? 'Remove Bookmark' : 'Bookmark Track'}
-              >
-                <Bookmark size={18} className={isBookmarked ? 'fill-current' : ''} />
-              </button>
-            </>
+                {/* Bookmark Button */}
+                <button
+                  onClick={handleBookmark}
+                  disabled={loadingAction}
+                  className={`p-3 rounded-xl border font-bold transition-all duration-300 cursor-pointer ${
+                    isBookmarked
+                      ? 'bg-amber-500 border-amber-500 text-white shadow-sm shadow-amber-500/10'
+                      : 'bg-white border-slate-200 text-slate-500 hover:border-amber-400 hover:text-amber-500'
+                  }`}
+                  title={isBookmarked ? 'Remove Bookmark' : 'Bookmark Track'}
+                >
+                  <Bookmark size={18} className={isBookmarked ? 'fill-current' : ''} />
+                </button>
+              </>
+            )
           ) : (
             /* Call to action for anonymous users */
             <Link
@@ -444,25 +527,44 @@ const TrackDetails = ({ user }) => {
       {/* Interactive Horizontal Timeline */}
       <div className="relative mb-12">
         {/* The grey background line connecting the nodes */}
-        <div className="absolute top-6 left-0 right-0 h-1 bg-slate-200 -z-10 rounded-full"></div>
+        <div className="absolute top-[44px] left-0 right-0 h-1 bg-slate-200 -z-10 rounded-full"></div>
         
-        {/* Scrollable container for nodes */}
-        <div className="flex items-start justify-between gap-4 overflow-x-auto pb-4 snap-x hide-scrollbar">
+        {/* Scrollable container for nodes with top & bottom padding so rings/scaling are never clipped */}
+        <div className="flex items-start justify-between gap-4 overflow-x-auto pt-5 pb-5 px-3 snap-x hide-scrollbar min-h-[120px]">
           {track.semesters.map((semester, index) => {
             const isActive = index === activeSemesterIndex;
+            // Track curriculum semesters start from Year 2 (II-I at index 0, II-II at index 1).
+            // Year 3 students have completed Year 2 semesters (indices 0 & 1).
+            // Year 4 students have completed Year 2 & 3 semesters (indices 0, 1, 2, 3).
+            let completedCount = 0;
+            if (studentStatus === 'alumni') {
+              completedCount = 99;
+            } else if (studentYear === 3) {
+              completedCount = 2;
+            } else if (studentYear === 4) {
+              completedCount = 4;
+            } else {
+              completedCount = 0;
+            }
+            const isCompleted = index < completedCount;
+
             
             return (
               <button
                 key={`timeline-node-${index}`}
                 onClick={() => setActiveSemesterIndex(index)}
-                className="relative flex flex-col items-center min-w-[100px] snap-center group focus:outline-none"
+                className="relative flex flex-col items-center min-w-[100px] snap-center group focus:outline-none cursor-pointer"
               >
-                {/* Node Circle with added transition-all duration-300 ease-in-out */}
+                {/* Node Circle with green styling for completed semesters and non-clipping padding */}
                 <div 
-                  className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-sm transition-all duration-300 ease-in-out z-10 
-                    ${isActive 
-                      ? 'bg-blue-600 text-white ring-4 ring-blue-100 shadow-lg shadow-blue-500/40 scale-110' 
-                      : 'bg-white text-slate-500 border-2 border-slate-200 group-hover:border-blue-400 group-hover:text-blue-500 group-hover:scale-105'
+                  className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-sm transition-all duration-300 ease-in-out z-10 shrink-0 
+                    ${isCompleted
+                      ? isActive
+                        ? 'bg-emerald-600 text-white ring-4 ring-emerald-200 shadow-lg shadow-emerald-600/40 scale-110'
+                        : 'bg-emerald-600 text-white border-2 border-emerald-600 shadow-md shadow-emerald-600/20 group-hover:bg-emerald-700 group-hover:scale-105'
+                      : isActive 
+                        ? 'bg-blue-600 text-white ring-4 ring-blue-100 shadow-lg shadow-blue-500/40 scale-110' 
+                        : 'bg-white text-slate-500 border-2 border-slate-200 group-hover:border-blue-400 group-hover:text-blue-500 group-hover:scale-105'
                     }`}
                 >
                   {index + 1}
@@ -470,7 +572,9 @@ const TrackDetails = ({ user }) => {
                 
                 {/* Node Label */}
                 <div className="mt-4 text-center">
-                  <span className={`block text-sm font-bold transition-colors ${isActive ? 'text-blue-700' : 'text-slate-700'}`}>
+                  <span className={`block text-sm font-bold transition-colors ${
+                    isCompleted ? 'text-emerald-700 font-extrabold' : isActive ? 'text-blue-700' : 'text-slate-700'
+                  }`}>
                     {semester.semester_code}
                   </span>
                   <span className="block text-xs text-slate-500 max-w-[100px] truncate" title={semester.semester_title}>
@@ -482,6 +586,7 @@ const TrackDetails = ({ user }) => {
           })}
         </div>
       </div>
+
 
       {/* --- THE FADE-IN CONTAINER --- */}
       {/* By keying this container to activeSemesterIndex, React cleanly remounts it, firing our new animate-fade-in class every time the user switches a node. */}
@@ -618,8 +723,196 @@ const TrackDetails = ({ user }) => {
         </div>
       </div>
 
+      {/* Enrolled Students Modal */}
+      {showEnrolledModal && createPortal(
+        <div 
+          onClick={() => setShowEnrolledModal(false)}
+          className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in"
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-3xl max-w-3xl w-full max-h-[85vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden"
+          >
+            {/* Modal Header */}
+            <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between shrink-0 border-b border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-blue-600/30 text-blue-400 rounded-xl">
+                  <Users size={18} />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-white text-base">Enrolled Students</h3>
+                  <p className="text-xs text-blue-200">{track.track_name}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowEnrolledModal(false)}
+                className="p-2 bg-white/10 hover:bg-white/20 text-white rounded-xl transition-colors cursor-pointer"
+                title="Close Modal"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 overflow-y-auto flex-1 text-left">
+              {enrolledLoading ? (
+                <div className="py-16 text-center text-slate-500 font-medium">
+                  <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+                  Loading enrolled students...
+                </div>
+              ) : enrolledError ? (
+                <div className="py-12 text-center text-rose-600 font-bold space-y-2">
+                  <AlertCircle size={32} className="mx-auto text-rose-500" />
+                  <p>{enrolledError}</p>
+                </div>
+              ) : enrolledStudents.length === 0 ? (
+                <div className="py-16 text-center text-slate-400 font-medium">
+                  No students have committed to this track yet.
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between text-xs font-bold text-slate-500 pb-2 border-b border-slate-100">
+                    <span>Total Enrolled: <strong className="text-slate-900">{enrolledStudents.length}</strong></span>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="border-b border-slate-200 text-[11px] font-extrabold text-slate-400 uppercase tracking-wider bg-slate-50">
+                          <th className="py-3 px-4">Student Details</th>
+                          <th className="py-3 px-4">Branch</th>
+                          <th className="py-3 px-4 text-center">CDC Band</th>
+                          <th className="py-3 px-4 text-center">Avg Perf</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 text-xs font-medium">
+                        {enrolledStudents.map((st) => (
+                          <tr key={st.roll_number || st.email} className="hover:bg-slate-50">
+                            <td className="py-3 px-4">
+                              <div className="font-bold text-slate-900">{st.name}</div>
+                              <div className="text-[11px] text-slate-400 font-mono">{st.roll_number} • {st.email}</div>
+                            </td>
+                            <td className="py-3 px-4 font-semibold text-slate-700">{st.branch}</td>
+                            <td className="py-3 px-4 text-center">
+                              <span className="px-2.5 py-0.5 rounded-md text-[10px] font-black border bg-blue-50 text-blue-700 border-blue-200">
+                                Band {st.cdc_band}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-center font-bold text-slate-900">{st.avg_performance}%</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* COMMITMENT CONFIRMATION MODAL */}
+      {showCommitModal && createPortal(
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 space-y-6 shadow-2xl border border-slate-200 relative text-left">
+            <button 
+              onClick={() => setShowCommitModal(false)}
+              className="absolute top-5 right-5 w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center font-bold text-sm transition-colors cursor-pointer"
+            >
+              ✕
+            </button>
+
+            <div className="space-y-2">
+              <div className="inline-flex items-center gap-2 px-3 py-1 bg-blue-50 text-blue-700 font-extrabold text-xs rounded-full border border-blue-200">
+                <Target size={14} />
+                <span>Track Commitment Confirmation</span>
+              </div>
+              <h3 className="text-xl font-black text-slate-900 leading-snug">
+                You are committing to <span className="text-blue-600 font-black">{track.track_name}</span> track. Are you sure?
+              </h3>
+            </div>
+
+            {/* Branch Mismatch Disclaimer inside Modal */}
+            {user && !isTrackPreferredForBranch(track.slug, user.branch) && (
+              <div className="bg-rose-50 p-4 rounded-2xl border border-rose-200 text-rose-900 text-xs sm:text-sm font-bold flex items-start gap-3">
+                <AlertCircle size={20} className="text-rose-600 shrink-0 mt-0.5" />
+                <div>
+                  <strong className="text-rose-950 font-black block mb-0.5">⚠️ Branch Mismatch Warning:</strong>
+                  <span>This track is not designated for your enrolled branch (<strong>{user.branch}</strong>). It is primarily designed for <strong>{getPreferredBranchForTrack(track.slug)}</strong>. Please ensure you intend to take an out-of-branch track.</span>
+                </div>
+              </div>
+            )}
+
+            <div className="bg-amber-50 p-4 rounded-2xl border border-amber-200 text-amber-900 text-xs sm:text-sm font-bold flex items-start gap-3">
+              <AlertCircle size={20} className="text-amber-600 shrink-0 mt-0.5" />
+              <div>
+                <span>Track changes won't be allowed after </span>
+                <u className="text-amber-950 font-black">
+                  {selectionWindow?.end_time ? (
+                    `${new Date(selectionWindow.end_time).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', year: 'numeric' })}, 11:59 PM IST`
+                  ) : 'the window closes'}
+                </u>.
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider">
+                Enter <span className="text-blue-600 font-black">confirm</span> in the field below to confirm your decision:
+              </label>
+              <input
+                type="text"
+                placeholder="Type 'confirm' here"
+                value={confirmInput}
+                onChange={(e) => setConfirmInput(e.target.value)}
+                className="w-full px-4 py-3 rounded-2xl border border-slate-300 text-sm font-bold outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 transition-all"
+                autoFocus
+              />
+            </div>
+
+            <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 text-slate-600 text-xs font-semibold leading-relaxed">
+              <strong>Note:</strong> You are allowed to change your track in the window:{' '}
+              <span className="font-bold text-slate-900">
+                {selectionWindow?.start_time ? (
+                  new Date(selectionWindow.start_time).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', year: 'numeric' })
+                ) : 'Start'}
+              </span>{' '}
+              to{' '}
+              <span className="font-bold text-slate-900">
+                {selectionWindow?.end_time ? (
+                  `${new Date(selectionWindow.end_time).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', year: 'numeric' })}, 11:59 PM IST`
+                ) : 'End'}
+              </span>.
+            </div>
+
+
+
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowCommitModal(false)}
+                className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={confirmInput.trim().toLowerCase() !== 'confirm' || loadingAction}
+                onClick={() => executeCommit(slug)}
+                className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white font-extrabold text-xs rounded-xl shadow-md shadow-blue-500/20 disabled:shadow-none transition-all cursor-pointer disabled:cursor-not-allowed"
+              >
+                {loadingAction ? 'Updating...' : 'Confirm Commitment'}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
     </div>
   );
+
 };
 
 export default TrackDetails;
