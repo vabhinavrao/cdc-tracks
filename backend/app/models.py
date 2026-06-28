@@ -16,6 +16,9 @@ class User(Base):
     picture = Column(String, nullable=True)
     selected_track_id = Column(String, nullable=True)
     bookmarked_tracks = Column(JSON, default=list, nullable=False)
+    role = Column(String, default="student", nullable=False)
+    assigned_branch = Column(String, nullable=True)
+
 
 class Track(Base):
     __tablename__ = "tracks"

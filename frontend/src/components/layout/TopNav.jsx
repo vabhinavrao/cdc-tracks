@@ -37,14 +37,23 @@ const TopNav = ({ user, onLogout }) => {
             {user ? (
               <>
                 {/* Authenticated Links */}
-                <NavLink to="/dashboard" className={navLinkClass}>
-                  <LayoutDashboard size={16} />
-                  <span>Dashboard</span>
-                </NavLink>
-                <NavLink to="/cdc-dashboard" className={navLinkClass}>
-                  <Award size={16} />
-                  <span>CDC Performance</span>
-                </NavLink>
+                {user.role === 'super_admin' || user.role === 'branch_admin' ? (
+                  <NavLink to="/admin-dashboard" className={navLinkClass}>
+                    <LayoutDashboard size={16} />
+                    <span>Admin Dashboard</span>
+                  </NavLink>
+                ) : (
+                  <>
+                    <NavLink to="/dashboard" className={navLinkClass}>
+                      <LayoutDashboard size={16} />
+                      <span>Dashboard</span>
+                    </NavLink>
+                    <NavLink to="/cdc-dashboard" className={navLinkClass}>
+                      <Award size={16} />
+                      <span>CDC Performance</span>
+                    </NavLink>
+                  </>
+                )}
                 <NavLink to="/profile" className={navLinkClass}>
                   {user.picture ? (
                     <img
@@ -58,6 +67,7 @@ const TopNav = ({ user, onLogout }) => {
                   )}
                   <span>Profile</span>
                 </NavLink>
+
                 
                 {/* Logout Button */}
                 <button

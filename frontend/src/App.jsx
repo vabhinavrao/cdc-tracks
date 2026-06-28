@@ -7,6 +7,7 @@ import TrackDetails from './pages/TrackDetails';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import CDCDashboard from './pages/CDCDashboard';
+import AdminDashboard from './pages/AdminDashboard';
 
 // A beautifully styled profile card for the Profile route
 const Profile = ({ user, onLogout }) => {
@@ -30,41 +31,31 @@ const Profile = ({ user, onLogout }) => {
                 : user.roll_number?.slice(-2) || 'ST'}
             </div>
           )}
-          <h2 className="text-2xl font-bold text-slate-800">{user.name || 'Student Profile'}</h2>
-          <p className="text-slate-500 text-sm mt-1">Academic & Curriculum Identity</p>
+          <h2 className="text-2xl font-bold text-slate-800">{user.name || 'Profile'}</h2>
+          <p className="text-slate-500 text-sm mt-1">
+            {user.role === 'super_admin' ? 'CDC Administrator & Management' : user.role === 'branch_admin' ? `Branch HOD (${user.assigned_branch})` : 'Academic & Curriculum Identity'}
+          </p>
         </div>
 
         <div className="space-y-4 border-t border-slate-100 pt-6">
           <div className="flex justify-between py-2 border-b border-slate-50">
-            <span className="text-sm font-semibold text-slate-500">Roll Number</span>
-            <span className="text-sm font-bold text-slate-800">{user.roll_number}</span>
+            <span className="text-sm font-semibold text-slate-500">System Role</span>
+            <span className="text-sm font-bold text-blue-600 uppercase">{user.role || 'student'}</span>
           </div>
           <div className="flex justify-between py-2 border-b border-slate-50">
             <span className="text-sm font-semibold text-slate-500">Email Address</span>
             <span className="text-sm font-medium text-slate-800">{user.email}</span>
           </div>
           <div className="flex justify-between py-2 border-b border-slate-50">
-            <span className="text-sm font-semibold text-slate-500">Department</span>
-            <span className="text-sm font-bold text-slate-800">{user.branch}</span>
-          </div>
-          <div className="flex justify-between py-2 border-b border-slate-50">
-            <span className="text-sm font-semibold text-slate-500">Admission Mode</span>
-            <span className="text-sm font-bold text-slate-800">{user.admission_type}</span>
-          </div>
-          <div className="flex justify-between py-2 border-b border-slate-50">
-            <span className="text-sm font-semibold text-slate-500">Academic Intake</span>
-            <span className="text-sm font-medium text-slate-800">{user.joining_year}</span>
-          </div>
-          <div className="flex justify-between py-2">
-            <span className="text-sm font-semibold text-slate-500">Expected Graduation</span>
-            <span className="text-semibold text-slate-800">{user.graduation_year}</span>
+            <span className="text-sm font-semibold text-slate-500">Department / Scope</span>
+            <span className="text-sm font-bold text-slate-800">{user.assigned_branch || user.branch}</span>
           </div>
         </div>
 
         <div className="mt-8 pt-6 border-t border-slate-100 flex gap-4">
           <button
             onClick={onLogout}
-            className="flex-1 py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-sm rounded-lg transition-colors text-center"
+            className="flex-1 py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-sm rounded-lg transition-colors text-center cursor-pointer"
           >
             Sign Out
           </button>
@@ -84,6 +75,7 @@ function App() {
       return null;
     }
   });
+
   const handleLoginSuccess = (profile) => {
     setUser(profile);
     localStorage.setItem('student_profile', JSON.stringify(profile));
@@ -93,6 +85,8 @@ function App() {
     setUser(null);
     localStorage.removeItem('student_profile');
   };
+
+  const isAdmin = user?.role === 'super_admin' || user?.role === 'branch_admin';
 
   return (
     <BrowserRouter>
@@ -106,7 +100,19 @@ function App() {
             {/* Login Route */}
             <Route 
               path="/login" 
-              element={user ? <Navigate to="/dashboard" replace /> : <Login onLoginSuccess={handleLoginSuccess} />} 
+              element={
+                user 
+                  ? <Navigate to={isAdmin ? "/admin-dashboard" : "/dashboard"} replace /> 
+                  : <Login onLoginSuccess={handleLoginSuccess} />
+              } 
+            />
+
+            {/* Admin Dashboard Route */}
+            <Route 
+              path="/admin-dashboard" 
+              element={
+                user ? (isAdmin ? <AdminDashboard user={user} /> : <Navigate to="/dashboard" replace />) : <Navigate to="/login" replace />
+              } 
             />
 
             {/* Private Routes requiring Authentication */}
@@ -116,7 +122,9 @@ function App() {
             />
             <Route 
               path="/dashboard" 
-              element={user ? <Dashboard user={user} /> : <Navigate to="/login" replace />} 
+              element={
+                user ? (isAdmin ? <Navigate to="/admin-dashboard" replace /> : <Dashboard user={user} />) : <Navigate to="/login" replace />
+              } 
             />
             <Route 
               path="/cdc-dashboard" 
@@ -128,12 +136,13 @@ function App() {
             />
 
             {/* Fallback routing */}
-            <Route path="*" element={<Navigate to="/" replace />} />
+            <Route path="*" element={<Navigate to={isAdmin ? "/admin-dashboard" : "/"} replace />} />
           </Routes>
         </main>
       </div>
     </BrowserRouter>
   );
 }
+
 
 export default App;

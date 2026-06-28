@@ -245,8 +245,8 @@ const CDCDashboard = ({ user }) => {
         </div>
       </div>
 
-      {/* 3. Secondary Mini Metric Cards Row (5 Cards) */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+      {/* 3. Secondary Mini Metric Cards Row (4 Cards) */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         
         {/* Avg Performance */}
         <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm flex items-center gap-3">
@@ -272,18 +272,6 @@ const CDCDashboard = ({ user }) => {
           </div>
         </div>
 
-        {/* Participation */}
-        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm flex items-center gap-3">
-          <div className="p-2.5 rounded-xl bg-amber-50 text-amber-600 shrink-0">
-            <User size={20} />
-          </div>
-          <div>
-            <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">Participation</span>
-            <span className="text-lg font-black text-slate-900">{overall.participation || '80'}%</span>
-            <span className="block text-[10px] text-slate-400 truncate">Overall Participation</span>
-          </div>
-        </div>
-
         {/* CIE I */}
         <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm flex items-center gap-3">
           <div className="p-2.5 rounded-xl bg-blue-50 text-blue-600 shrink-0">
@@ -299,7 +287,7 @@ const CDCDashboard = ({ user }) => {
         </div>
 
         {/* CIE II */}
-        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm flex items-center gap-3 col-span-2 sm:col-span-1">
+        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm flex items-center gap-3">
           <div className="p-2.5 rounded-xl bg-indigo-50 text-indigo-600 shrink-0">
             <BookOpen size={20} />
           </div>
@@ -313,6 +301,7 @@ const CDCDashboard = ({ user }) => {
         </div>
 
       </div>
+
 
       {/* 4. Middle Visual Analytics Section (3 Columns) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">

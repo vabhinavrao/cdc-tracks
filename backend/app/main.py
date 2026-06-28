@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.database import engine, Base, SessionLocal
 from app.models import Track
-from app.routes import auth, student
+from app.routes import auth, student, admin
 
 app = FastAPI(title="HITAM Student Track Explorer API")
 
@@ -23,6 +23,7 @@ app.add_middleware(
 # Register routers
 app.include_router(auth.router)
 app.include_router(student.router)
+app.include_router(admin.router)
 
 def generate_slug(name: str) -> str:
     """Helper to generate URL-friendly slugs, mirroring the frontend's trackLoader.js logic"""
@@ -43,21 +44,16 @@ def startup_event():
     
     # 1.5 Try to add new columns if the table already existed previously
     db = SessionLocal()
-    try:
-        from sqlalchemy import text
-        db.execute(text("ALTER TABLE users ADD COLUMN name VARCHAR"))
-        db.commit()
-    except Exception:
-        db.rollback()
-        
-    try:
-        from sqlalchemy import text
-        db.execute(text("ALTER TABLE users ADD COLUMN picture VARCHAR"))
-        db.commit()
-    except Exception:
-        db.rollback()
-        
+    for col_def in ["name VARCHAR", "picture VARCHAR", "role VARCHAR DEFAULT 'student'", "assigned_branch VARCHAR"]:
+        try:
+            from sqlalchemy import text
+            db.execute(text(f"ALTER TABLE users ADD COLUMN {col_def}"))
+            db.commit()
+        except Exception:
+            db.rollback()
+            
     # 1.6 Seed CDC Performance data
+
     try:
         from app.services.cdc_service import seed_cdc_performance_data
         seed_cdc_performance_data(db)

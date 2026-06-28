@@ -161,11 +161,36 @@ const Login = ({ onLoginSuccess }) => {
             {showDemo && (
               <form onSubmit={handleDemoSubmit} className="p-4 bg-white border-t border-slate-200 space-y-4 animate-fade-in">
                 <p className="text-xs text-slate-500 leading-relaxed">
-                  No Google client ID configured? Type a dummy roll-number email and log in to test.
-                  Examples:
-                  <br />• <strong>24121A0501@hitam.org</strong> (Regular, CSE, 2024 Joined)
-                  <br />• <strong>23125A6605@hitam.org</strong> (Lateral Entry, CSE AI/ML, 2023 Joined)
+                  Type or select a demo account email below to test different roles and access controls:
                 </p>
+                
+                <div className="space-y-1.5">
+                  <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Quick Select Demo Roles:</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setDemoEmail('cdc_admin@hitam.org')}
+                      className="px-2.5 py-1 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-md text-xs font-bold transition-colors cursor-pointer"
+                    >
+                      🛡️ CDC Admin (Full Access)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDemoEmail('hod_cse@hitam.org')}
+                      className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-md text-xs font-bold transition-colors cursor-pointer"
+                    >
+                      🏛️ HOD CSE
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDemoEmail('24121A0501@hitam.org')}
+                      className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md text-xs font-bold transition-colors cursor-pointer"
+                    >
+                      🎓 Student
+                    </button>
+                  </div>
+                </div>
+
                 <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
                     Demo Email
@@ -176,18 +201,19 @@ const Login = ({ onLoginSuccess }) => {
                     className="block w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow"
                     value={demoEmail}
                     onChange={(e) => setDemoEmail(e.target.value)}
-                    placeholder="student_roll@hitam.org"
+                    placeholder="user@hitam.org"
                   />
                 </div>
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full py-2 px-4 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-bold text-sm rounded-lg transition-colors flex items-center justify-center gap-2"
+                  className="w-full py-2 px-4 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-bold text-sm rounded-lg transition-colors flex items-center justify-center gap-2 cursor-pointer"
                 >
-                  Log In as Demo Student
+                  Log In with Demo Account
                 </button>
               </form>
             )}
+
           </div>
         </div>
       </div>
