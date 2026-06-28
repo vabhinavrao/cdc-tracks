@@ -9,9 +9,10 @@ import track4 from '../data/track-json/track_ev_power_automation.json';
 import track5 from '../data/track-json/track_full_stack_developer.json';
 import track6 from '../data/track-json/track_se_sd.json';
 import track7 from '../data/track-json/track_vlsi_semiconductor.json';
+import track8 from '../data/track-json/track_embedded_system_iot.json';
 
 // Group them into an array for processing
-const rawTracks = [track1, track2, track3, track4, track5, track6, track7];
+const rawTracks = [track1, track2, track3, track4, track5, track6, track7, track8];
 
 // 2. Helper function to create clean, URL-friendly slugs
 export const generateSlug = (name) => {
@@ -70,6 +71,7 @@ export const getBranchDisplayName = (dbBranch) => {
 export const getPreferredBranchForTrack = (slug) => {
   const mapping = {
     'vlsi-semiconductor-engineer': 'ECE',
+    'embedded-system-iot-design-engineer': 'ECE, EEE, CSE',
     'software-engineer-software-developer': 'CSE, CSM, CSD',
     'full-stack-developer': 'CSE, CSM, CSD',
     'ev-power-systems-automation-engineer': 'EEE',

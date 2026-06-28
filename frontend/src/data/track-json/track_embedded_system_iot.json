@@ -1,0 +1,571 @@
+{
+  "track_name": "Embedded System / IoT Design Engineer",
+  "semesters": [
+    {
+      "semester_code": "II-I",
+      "semester_title": "Foundation in Embedded Systems & IoT Programming",
+      "hours": 48,
+      "model": "Instructor-led 8 Days Training (48 Hours)",
+      "methodology": "Theory (30%) and Practice Labs (70%)",
+      "pre_requisites": [
+        "Basic programming fundamentals in any language (C/C++/Python/Java).",
+        "Basic understanding of digital electronics concepts.",
+        "Familiarity with PC usage, IDE installation, and serial communication tools.",
+        "Awareness of Wi-Fi and networking fundamentals."
+      ],
+      "expected_outcomes": [
+        "Understand embedded systems architecture and applications.",
+        "Differentiate between microcontrollers and microprocessors.",
+        "Program ESP32 using Embedded C.",
+        "Configure GPIOs, PWM, Timers, and Interrupts.",
+        "Interface UART, I2C, and SPI peripherals.",
+        "Build Wi-Fi and Bluetooth enabled IoT applications.",
+        "Use cloud dashboards for data visualization.",
+        "Develop beginner-level IoT projects with real-time monitoring."
+      ],
+      "days": [
+        {
+          "day_number": 1,
+          "day_title": "Introduction to Embedded Systems & ESP32 Basics",
+          "topics": [
+            "Fundamentals of Embedded Systems",
+            "Embedded applications in Industry 4.0 and IoT",
+            "Microcontrollers vs Microprocessors",
+            "ESP32 Architecture Overview",
+            "Hands-On: Installing Arduino IDE / ESP-IDF, ESP32 Board Configuration, LED Blink Program, Push Button Interfacing"
+          ]
+        },
+        {
+          "day_number": 2,
+          "day_title": "Embedded C & GPIO Programming",
+          "topics": [
+            "Basics of Embedded C",
+            "GPIO Configuration and Registers",
+            "Pull-up / Pull-down Configuration",
+            "PWM Concepts and Applications",
+            "Hands-On: LED Brightness Control using PWM, Interrupt-based Button Control"
+          ]
+        },
+        {
+          "day_number": 3,
+          "day_title": "Timers & UART Communication",
+          "topics": [
+            "Timers and Counters in ESP32",
+            "Interrupt Handling",
+            "UART Communication Protocol",
+            "Motors and Drivers",
+            "Hands-On: UART Communication with PC, GSM/GPS Module Interfacing and Motors Interfacing"
+          ]
+        },
+        {
+          "day_number": 4,
+          "day_title": "I2C & SPI Communication",
+          "topics": [
+            "I2C Protocol and Applications",
+            "SPI Protocol and Applications",
+            "Sensor Communication Concepts",
+            "Hands-On: Temperature Sensor Interfacing using I2C, OLED Display Interfacing using SPI"
+          ]
+        },
+        {
+          "day_number": 5,
+          "day_title": "Wi-Fi & Bluetooth in ESP32",
+          "topics": [
+            "TCP/IP Basics",
+            "Wi-Fi Modes in ESP32",
+            "Bluetooth Classic vs BLE 6.0",
+            "ESP32 in IoT Applications",
+            "Hands-On: ESP32 Wi-Fi Connectivity, Bluetooth Data Transfer, Webserver-based LED Control"
+          ]
+        },
+        {
+          "day_number": 6,
+          "day_title": "Cloud Connectivity & IoT Dashboards",
+          "topics": [
+            "Introduction to Cloud Platforms",
+            "MQTT Basics",
+            "IoT Dashboards and Monitoring",
+            "Hands-On: Sending Sensor Data to ThingSpeak/Blynk, Dashboard Visualization, Real-time Data Monitoring"
+          ]
+        },
+        {
+          "day_number": 7,
+          "day_title": "Sensor Integration & Data Logging",
+          "topics": [
+            "Analog and Digital Sensors",
+            "Data Acquisition Concepts",
+            "SD Card and EEPROM Basics",
+            "Introduction to Edge Data Processing",
+            "Hands-On: DHT11/DHT22 Sensor Interfacing, Sensor Data Logging using ESP32, Threshold-based Alerts"
+          ]
+        },
+        {
+          "day_number": 8,
+          "day_title": "Mini Project & Evaluation",
+          "topics": [
+            "IoT Node Design Flow",
+            "Testing and Debugging Basics",
+            "Introduction to Industrial IoT Applications"
+          ]
+        }
+      ],
+      "implementations": [
+        "Smart Room Monitoring System",
+        "Wi-Fi-based Home Automation System",
+        "Bluetooth-controlled Device",
+        "Machine Health Monitoring",
+        "Sensor Data Logger with Cloud Dashboard"
+      ]
+    },
+    {
+      "semester_code": "II-II",
+      "semester_title": "PCB Design & Microcontroller Interfacing",
+      "hours": 48,
+      "model": "Instructor-led 8 Days Training (48 Hours)",
+      "methodology": "Theory (45%) and Practice Labs (55%)",
+      "pre_requisites": [
+        "Completion of II-I Embedded Systems Training.",
+        "Understanding of GPIO, UART, I2C, and SPI concepts.",
+        "Basic knowledge of electronic components and circuits.",
+        "Familiarity with Embedded C programming."
+      ],
+      "expected_outcomes": [
+        "Design PCB schematics and layouts using industry tools.",
+        "Apply PCB design rules and manufacturing constraints.",
+        "Generate Gerber files and BOM.",
+        "Understand EMI/EMC and thermal considerations.",
+        "Program Silicon Labs microcontrollers.",
+        "Interface sensors and peripherals with MCUs.",
+        "Build custom hardware boards for embedded applications.",
+        "Develop hardware-software integrated projects."
+      ],
+      "days": [
+        {
+          "day_number": 1,
+          "day_title": "PCB Fundamentals & Schematic Design",
+          "topics": [
+            "PCB Basics and Design Flow",
+            "Single Layer vs Multilayer PCB",
+            "Components, Footprints, Libraries",
+            "Overview of KiCad / Altium",
+            "Hands-On: Schematic Design of LED Circuit, Footprint Assignment"
+          ]
+        },
+        {
+          "day_number": 2,
+          "day_title": "PCB Layout & Design Rules",
+          "topics": [
+            "PCB Trace Routing Concepts",
+            "Ground Planes and Copper Pour",
+            "DRC and ERC Validation",
+            "Hands-On: 5V Regulator Board Layout, Gerber File Generation"
+          ]
+        },
+        {
+          "day_number": 3,
+          "day_title": "Advanced PCB Concepts",
+          "topics": [
+            "Signal Integrity Basics",
+            "EMI/EMC Concepts",
+            "Thermal Management",
+            "PCB Fabrication Workflow",
+            "Hands-On: Sensor Interface PCB Design, PCB Validation Checks"
+          ]
+        },
+        {
+          "day_number": 4,
+          "day_title": "Silicon Labs MCU Introduction",
+          "topics": [
+            "Overview of EFM32/EFR32 Controllers",
+            "Simplicity Studio IDE",
+            "GPIO and Clock Systems",
+            "Hands-On: LED Blink using SiLabs MCU, Push Button Interfacing"
+          ]
+        },
+        {
+          "day_number": 5,
+          "day_title": "Peripheral Interfacing",
+          "topics": [
+            "Timers and Interrupts",
+            "ADC/DAC Concepts",
+            "UART Communication",
+            "Hands-On: Potentiometer Reading using ADC, UART Communication with PC"
+          ]
+        },
+        {
+          "day_number": 6,
+          "day_title": "Sensor & Communication Interfaces",
+          "topics": [
+            "I2C and SPI Protocols",
+            "EEPROM and Sensor Communication",
+            "Low Power Features",
+            "Hands-On: EEPROM Interfacing, SPI Sensor Integration"
+          ]
+        },
+        {
+          "day_number": 7,
+          "day_title": "Power Electronics & Industrial Interfaces",
+          "topics": [
+            "Voltage Regulators and Power Supplies",
+            "Relay and Motor Driver Circuits",
+            "Industrial Sensors and Isolation Concepts",
+            "Introduction to CAN Protocol",
+            "Hands-On: Relay Driver Circuit Design, Motor Driver PCB Module"
+          ]
+        },
+        {
+          "day_number": 8,
+          "day_title": "Hardware Design Project & Evaluation",
+          "topics": [
+            "Hardware Testing and Debugging",
+            "PCB Assembly and Soldering Practices",
+            "Design Documentation Standards"
+          ]
+        }
+      ],
+      "implementations": [
+        "Smart Energy Meter Interface Board",
+        "Sensor Acquisition PCB",
+        "Industrial Monitoring Interface Module"
+      ]
+    },
+    {
+      "semester_code": "III-I",
+      "semester_title": "Advanced IoT Systems & Multilayer PCB Design",
+      "hours": 48,
+      "model": "Instructor-led 8 Days Training (48 Hours)",
+      "methodology": "Theory (40%) and Practice Labs (60%)",
+      "pre_requisites": [
+        "Completion of II-I and II-II Training.",
+        "Familiarity with ESP32 and PCB Design.",
+        "Understanding of communication protocols.",
+        "Experience with sensor interfacing."
+      ],
+      "expected_outcomes": [
+        "Design complete IoT system architectures.",
+        "Implement MQTT-based communication systems.",
+        "Configure secure IoT communication.",
+        "Build cloud-connected IoT applications.",
+        "Design multilayer PCBs.",
+        "Apply EMI/EMC and power integrity concepts.",
+        "Integrate multiple IoT nodes.",
+        "Develop industry-oriented IoT prototypes."
+      ],
+      "days": [
+        {
+          "day_number": 1,
+          "day_title": "IoT System Architecture & MQTT Basics",
+          "topics": [
+            "IoT Architecture Layers",
+            "MQTT Protocol and QoS",
+            "Device-Gateway-Cloud Architecture",
+            "Hands-On: Installing MQTT Broker, ESP32 MQTT Publish/Subscribe"
+          ]
+        },
+        {
+          "day_number": 2,
+          "day_title": "IoT Communication & Security",
+          "topics": [
+            "HTTP, CoAP, WebSocket Protocols",
+            "TLS/SSL Security",
+            "Authentication and Encryption",
+            "Hands-On: Secure MQTT Communication, IoT Dashboard Creation"
+          ]
+        },
+        {
+          "day_number": 3,
+          "day_title": "Edge Computing & Sensor Networks",
+          "topics": [
+            "Edge Processing Concepts",
+            "Multi-node IoT Systems",
+            "Industrial IoT Use Cases",
+            "Hands-On: Multi-sensor ESP32 Node, Node-RED Visualization"
+          ]
+        },
+        {
+          "day_number": 4,
+          "day_title": "Multilayer PCB Design",
+          "topics": [
+            "2-layer vs 4-layer PCB",
+            "Stack-up Design",
+            "High-Speed Routing",
+            "Hands-On: 4-layer PCB Layout Design"
+          ]
+        },
+        {
+          "day_number": 5,
+          "day_title": "EMI/EMC & Thermal Design",
+          "topics": [
+            "EMI Sources and Mitigation",
+            "Thermal Management",
+            "Power Integrity Concepts",
+            "Hands-On: High-current PCB Design, Decoupling and Filtering"
+          ]
+        },
+        {
+          "day_number": 6,
+          "day_title": "Cloud IoT Platforms & Analytics",
+          "topics": [
+            "AWS IoT / Azure IoT Overview",
+            "Data Logging and Analytics",
+            "Real-time Monitoring Systems",
+            "Hands-On: Cloud Dashboard Integration, Sensor Data Analytics"
+          ]
+        },
+        {
+          "day_number": 7,
+          "day_title": "Industrial IoT & Automation",
+          "topics": [
+            "Industrial Communication Protocols",
+            "Smart Factory Concepts",
+            "Predictive Maintenance Basics",
+            "IoT in Smart Agriculture and Healthcare",
+            "Hands-On: IoT-based Predictive Monitoring Demo, Industrial Sensor Network Setup"
+          ]
+        },
+        {
+          "day_number": 8,
+          "day_title": "IoT Hardware Integration Project",
+          "topics": [
+            "Complete IoT Product Development Cycle",
+            "PCB Validation and Testing",
+            "Product Deployment Concepts"
+          ]
+        }
+      ],
+      "implementations": [
+        "Smart Agriculture Monitoring System",
+        "Industrial Equipment Monitoring System",
+        "Smart Energy Management System"
+      ]
+    },
+    {
+      "semester_code": "III-II",
+      "semester_title": "Advanced Microcontrollers & Real-Time Embedded Applications",
+      "hours": 48,
+      "model": "Instructor-led 8 Days Training (48 Hours)",
+      "methodology": "Theory (40%) and Practice Labs (60%)",
+      "pre_requisites": [
+        "Strong Embedded C fundamentals.",
+        "Understanding of MCU peripherals and communication protocols.",
+        "Experience with ESP32 and Silicon Labs MCUs.",
+        "Basic understanding of IoT systems."
+      ],
+      "expected_outcomes": [
+        "Work with TI and STM32 microcontrollers.",
+        "Configure ADC, PWM, DMA, Timers, and Interrupts.",
+        "Interface communication peripherals.",
+        "Develop low-power embedded applications.",
+        "Build STM32-based sensor nodes.",
+        "Apply debugging and optimization techniques.",
+        "Understand DMA and advanced peripheral management.",
+        "Prepare for RTOS and advanced firmware development."
+      ],
+      "days": [
+        {
+          "day_number": 1,
+          "day_title": "Introduction to TI Microcontrollers",
+          "topics": [
+            "MSP430 and Tiva Architecture",
+            "GPIO and Clock Systems",
+            "Code Composer Studio",
+            "Hands-On: LED Blink and GPIO Interfacing"
+          ]
+        },
+        {
+          "day_number": 2,
+          "day_title": "Peripheral Interfacing & Low Power Modes",
+          "topics": [
+            "ADC and PWM Modules",
+            "Watchdog Timers",
+            "Interrupt Handling",
+            "Low Power Modes",
+            "Hands-On: Analog Sensor Reading, PWM-based Motor Control"
+          ]
+        },
+        {
+          "day_number": 3,
+          "day_title": "Communication Protocols",
+          "topics": [
+            "UART Communication",
+            "SPI Communication",
+            "SD Card Interfacing",
+            "Hands-On: UART-based Data Transfer, SPI SD Card Logging"
+          ]
+        },
+        {
+          "day_number": 4,
+          "day_title": "STM32 Architecture & Development",
+          "topics": [
+            "ARM Cortex-M Architecture",
+            "STM32CubeIDE and HAL Libraries",
+            "Clock and GPIO Configuration",
+            "Hands-On: STM32 LED and Push Button Control"
+          ]
+        },
+        {
+          "day_number": 5,
+          "day_title": "STM32 Peripheral Interfacing",
+          "topics": [
+            "ADC and PWM Configuration",
+            "Timers and Interrupts",
+            "DMA Basics",
+            "Hands-On: Temperature Sensor Interfacing, PWM LED Control"
+          ]
+        },
+        {
+          "day_number": 6,
+          "day_title": "Advanced Communication & Debugging",
+          "topics": [
+            "UART Register-level Understanding",
+            "Debugging Techniques using ST-Link",
+            "Serial Monitoring and Logging",
+            "Hands-On: STM32 to PC Communication, Debugging Peripheral Failures"
+          ]
+        },
+        {
+          "day_number": 7,
+          "day_title": "Firmware Optimization & RTOS Readiness",
+          "topics": [
+            "Embedded Firmware Architecture",
+            "Memory Optimization Techniques",
+            "Introduction to RTOS Concepts",
+            "Task Scheduling Basics",
+            "Hands-On: Cooperative Task Scheduling Demo, Performance Measurement"
+          ]
+        },
+        {
+          "day_number": 8,
+          "day_title": "Embedded Application Project & Evaluation",
+          "topics": [
+            "Embedded Product Testing Flow",
+            "Firmware Validation and Documentation",
+            "Industrial Coding Standards"
+          ]
+        }
+      ],
+      "implementations": [
+        "Smart Sensor Node using STM32",
+        "Data Acquisition System",
+        "Motor Speed Control System"
+      ]
+    },
+    {
+      "semester_code": "IV-I",
+      "semester_title": "RTOS, Embedded Linux & Industrial IoT Systems",
+      "hours": 48,
+      "model": "Instructor-led 8 Days Training (48 Hours)",
+      "methodology": "Theory (40%) and Practice Labs (60%)",
+      "pre_requisites": [
+        "Strong knowledge of STM32 programming.",
+        "Understanding of DMA, UART, I2C, SPI, and Interrupts.",
+        "Familiarity with embedded networking concepts.",
+        "Exposure to IoT systems and cloud connectivity."
+      ],
+      "expected_outcomes": [
+        "Develop RTOS-based embedded applications.",
+        "Configure multitasking systems using FreeRTOS.",
+        "Implement task synchronization mechanisms.",
+        "Work with Raspberry Pi and Embedded Linux.",
+        "Interface Linux-based systems with sensors and peripherals.",
+        "Develop end-to-end IoT gateway applications.",
+        "Build scalable embedded and industrial IoT systems.",
+        "Become industry-ready for Embedded Firmware and IoT roles."
+      ],
+      "days": [
+        {
+          "day_number": 1,
+          "day_title": "Advanced STM32 Concepts",
+          "topics": [
+            "NVIC and SysTick",
+            "Interrupt Priority Handling",
+            "DMA Architecture",
+            "Hands-On: DMA-based ADC Transfer, UART Communication between STM32 Boards"
+          ]
+        },
+        {
+          "day_number": 2,
+          "day_title": "SPI & I2C Communication",
+          "topics": [
+            "SPI Protocol Deep Dive",
+            "I2C Addressing and Communication",
+            "Hands-On: EEPROM Interfacing, SPI Sensor Communication"
+          ]
+        },
+        {
+          "day_number": 3,
+          "day_title": "RTOS Fundamentals",
+          "topics": [
+            "Task Scheduling",
+            "Context Switching",
+            "FreeRTOS Architecture",
+            "Hands-On: FreeRTOS Setup on STM32, Multi-task LED Control"
+          ]
+        },
+        {
+          "day_number": 4,
+          "day_title": "Task Communication & Synchronization",
+          "topics": [
+            "Queues and Semaphores",
+            "Mutexes and Event Groups",
+            "ISR-to-Task Communication",
+            "Hands-On: Sensor and Display Task Communication"
+          ]
+        },
+        {
+          "day_number": 5,
+          "day_title": "Embedded Linux & Raspberry Pi",
+          "topics": [
+            "Linux Architecture",
+            "Embedded Linux Concepts",
+            "Raspberry Pi Setup and Configuration",
+            "Hands-On: GPIO Programming using Python, Push Button and LED Interface"
+          ]
+        },
+        {
+          "day_number": 6,
+          "day_title": "IoT Gateway & Cloud Connectivity",
+          "topics": [
+            "MQTT and HTTP Communication",
+            "Raspberry Pi as IoT Gateway",
+            "Cloud Data Logging",
+            "Hands-On: Sensor Data Upload to Cloud, Dashboard Visualization"
+          ]
+        },
+        {
+          "day_number": 7,
+          "day_title": "Beaglebone Black & Embedded Linux Development",
+          "topics": [
+            "Boot Process: ROM -> U-Boot -> Kernel",
+            "Device Tree Concepts",
+            "Buildroot and Cross Compilation",
+            "Hands-On: GPIO and Peripheral Interfacing, LCD Interfacing on Beaglebone"
+          ]
+        },
+        {
+          "day_number": 8,
+          "day_title": "Capstone Project & Industry Evaluation",
+          "topics": [
+            "Embedded Product Development Lifecycle",
+            "Industrial Documentation and Deployment",
+            "Performance Optimization and Validation"
+          ]
+        }
+      ],
+      "implementations": [
+        "Industrial IoT Monitoring System",
+        "RTOS-based Smart Monitoring Device",
+        "IoT Gateway using STM32 + Raspberry Pi",
+        "Predictive Maintenance System using MQTT Dashboard"
+      ],
+      "placement_support": {
+        "hours": 72,
+        "program": "Placement Readiness Program",
+        "components": [
+          "Company Specific Practice Tests - 48 h (Technical aptitude 16h, Domain-specific assessments 16h, Coding & problem-solving 16h)",
+          "Soft Skills - 24 h (Resume building & LinkedIn optimization 4h, Group discussions & technical presentations 8h, Mock interviews 12h)"
+        ]
+      }
+    }
+  ]
+}
