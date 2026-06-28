@@ -6,7 +6,7 @@ from typing import Optional
 from datetime import datetime
 from app.database import get_db
 from app.models import User, Track, BatchSchedule, TrackSelectionHistory, FinalisedTrack
-from app.utils import calculate_current_year
+from app.utils import calculate_current_year, get_auto_allocated_track_id
 from app.services.cdc_service import get_cdc_performance_by_roll
 
 router = APIRouter(prefix="/api/student", tags=["Student Profile & Tracks"])
@@ -206,7 +206,17 @@ def get_dashboard_data(
         if batch_schedule.track_selection_end and now > batch_schedule.track_selection_end:
             is_selection_open = False
 
-    # Retrieve complete details for the selected track
+    # Retrieve complete details for the selected track (auto-resolve if null)
+    if not user.selected_track_id:
+        auto_track_id = get_auto_allocated_track_id(db, user.roll_number)
+        if auto_track_id:
+            user.selected_track_id = auto_track_id
+            try:
+                db.commit()
+                db.refresh(user)
+            except Exception:
+                db.rollback()
+
     selected_track_data = None
     if user.selected_track_id:
         track = db.query(Track).filter(Track.id == user.selected_track_id).first()

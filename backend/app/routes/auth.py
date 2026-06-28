@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from app.database import get_db
 from app.models import User
-from app.utils import parse_roll_number
+from app.utils import parse_roll_number, get_auto_allocated_track_id
 
 router = APIRouter(prefix="/api/auth", tags=["Authentication"])
 
@@ -104,6 +104,12 @@ def google_login(payload: GoogleLoginRequest, db: Session = Depends(get_db)):
             assigned_branch=assigned_branch
         )
         db.add(user)
+
+    # Automatically resolve and assign track if student doesn't have an active track selected
+    if role == "student" and not user.selected_track_id:
+        auto_track_id = get_auto_allocated_track_id(db, user.roll_number)
+        if auto_track_id:
+            user.selected_track_id = auto_track_id
         
     try:
         db.commit()

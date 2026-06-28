@@ -75,3 +75,42 @@ def calculate_current_year(joining_year: int) -> int:
         
     # Standard engineering courses are 4 years, cap it between 1 and 4.
     return max(1, min(4, current_year))
+
+DOMAIN_TO_TRACK_ID = {
+    "Data Analyst / Data Scientist / AI/ML Engineer": "data-analyst-data-scientist-ai-ml-engineer",
+    "Full Stack Developer": "full-stack-developer",
+    "Software Engineer / Developer": "software-engineer-software-developer",
+    "Cloud / DevOps / Security Engineer": "cloud-engineer-devops-engineer-cyber-security-engineer",
+    "VLSI / Semiconductor Engineer": "vlsi-semiconductor-engineer",
+    "Embedded Systems / IoT Design Engineer": "embedded-system-iot-design-engineer",
+    "Design / CAE / Manufacturing Engineer": "design-cae-manufacturing-engineer",
+    "EV / Industrial Automation Engineer": "ev-power-systems-automation-engineer"
+}
+
+def get_auto_allocated_track_id(db, roll_number: str):
+    """
+    Looks up a student's auto-allocated track from finalised_tracks or cdc_performance.
+    """
+    if not roll_number:
+        return None
+    from sqlalchemy import func
+    from app.models import FinalisedTrack, CDCPerformance
+    
+    roll_clean = roll_number.strip().upper()
+    
+    # 1. Check FinalisedTrack
+    fin = db.query(FinalisedTrack).filter(func.upper(FinalisedTrack.roll_number) == roll_clean).first()
+    if fin and fin.track_id:
+        return fin.track_id
+        
+    # 2. Check CDCPerformance domain_tracks
+    cdc = db.query(CDCPerformance).filter(func.upper(CDCPerformance.roll_number) == roll_clean).first()
+    if cdc and cdc.domain_tracks:
+        for sem in ["III-I", "II-II", "II-I", "I-II"]:
+            sem_info = cdc.domain_tracks.get(sem)
+            if isinstance(sem_info, dict) and sem_info.get("domain"):
+                dom_name = str(sem_info.get("domain")).strip()
+                if dom_name in DOMAIN_TO_TRACK_ID:
+                    return DOMAIN_TO_TRACK_ID[dom_name]
+    return None
+
