@@ -2,7 +2,8 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, Target, Clock, CheckCircle2, GraduationCap, ArrowRight, ChevronDown, Calendar, Wrench, Briefcase, Zap, GitMerge, Bookmark, Award, Users, X, RefreshCw, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Target, Clock, CheckCircle2, GraduationCap, ArrowRight, ChevronDown, Calendar, Wrench, Briefcase, Zap, GitMerge, Bookmark, Award, Users, X, RefreshCw, AlertCircle, Lock } from 'lucide-react';
+
 import { getTrackBySlug, getPreferredBranchForTrack, isTrackPreferredForBranch } from '../utils/trackLoader';
 import axios from 'axios';
 
@@ -484,18 +485,28 @@ const TrackDetails = ({ user }) => {
             ) : (
               <>
                 {/* Commit Button */}
-                <button
-                  onClick={handleCommit}
-                  disabled={loadingAction}
-                  className={`px-5 py-3 rounded-xl font-bold text-sm flex items-center gap-2 transition-all duration-300 shadow-sm cursor-pointer border ${
-                    isCommitted
-                      ? 'border-blue-600 text-blue-600 bg-white hover:bg-blue-50/50'
-                      : 'border-transparent bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/10'
-                  }`}
-                >
-                  {isCommitted ? <CheckCircle2 size={18} /> : <Target size={18} />}
-                  {isCommitted ? 'Committed to Track' : 'Commit to Track'}
-                </button>
+                {selectionWindow && selectionWindow.is_open === false ? (
+                  <button
+                    disabled
+                    className="px-5 py-3 rounded-xl font-bold text-sm flex items-center gap-2 bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed shadow-none"
+                  >
+                    <Lock size={18} className="text-slate-400 shrink-0" />
+                    <span>Track change not permitted at this time</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleCommit}
+                    disabled={loadingAction}
+                    className={`px-5 py-3 rounded-xl font-bold text-sm flex items-center gap-2 transition-all duration-300 shadow-sm cursor-pointer border ${
+                      isCommitted
+                        ? 'border-blue-600 text-blue-600 bg-white hover:bg-blue-50/50'
+                        : 'border-transparent bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/10'
+                    }`}
+                  >
+                    {isCommitted ? <CheckCircle2 size={18} /> : <Target size={18} />}
+                    {isCommitted ? 'Committed to Track' : 'Commit to Track'}
+                  </button>
+                )}
 
                 {/* Bookmark Button */}
                 <button
@@ -523,6 +534,20 @@ const TrackDetails = ({ user }) => {
           )}
         </div>
       </div>
+
+      {/* Track Selection Ended Contact Note */}
+      {selectionWindow && selectionWindow.is_open === false && (
+        <div className="mb-8 bg-amber-50/90 border-2 border-amber-300 p-4 sm:p-5 rounded-2xl flex items-start gap-3.5 shadow-xs text-amber-900 text-xs sm:text-sm font-bold">
+          <AlertCircle size={22} className="text-amber-600 shrink-0 mt-0.5" />
+          <div>
+            <span className="font-black text-amber-950 text-sm sm:text-base block mb-1">🔒 Track changing/selection has ended</span>
+            <span className="leading-relaxed">
+              Track changing/selection for this semester has ended. Please contact <a href={`mailto:${selectionWindow.contact_email || 'support.cdc@hitam.org'}`} className="underline font-black text-amber-950 hover:text-amber-800 bg-amber-200/60 px-2 py-0.5 rounded-md inline-block">{selectionWindow.contact_email || 'support.cdc@hitam.org'}</a> for track changes or related issues.
+            </span>
+          </div>
+        </div>
+      )}
+
 
       {/* Interactive Horizontal Timeline */}
       <div className="relative mb-12">
