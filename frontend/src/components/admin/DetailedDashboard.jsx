@@ -287,8 +287,8 @@ Generated on: ${new Date().toLocaleString()}
                       <line x1={xP2} y1="20" x2={xP2} y2="150" stroke="#C084FC" strokeDasharray="4 4" strokeWidth="2" />
                       
                       {/* Non-overlapping Header Labels */}
-                      <text x={xP1} y="12" fill="#9333EA" fontSize="11" fontWeight="800" textAnchor="middle">Post Assessment I</text>
-                      <text x={xP2} y="12" fill="#9333EA" fontSize="11" fontWeight="800" textAnchor="middle">Post Assessment II</text>
+                      <text x={xP1} y="12" fill="#9333EA" fontSize="11" fontWeight="800" textAnchor="middle">Track Name I</text>
+                      <text x={xP2} y="12" fill="#9333EA" fontSize="11" fontWeight="800" textAnchor="middle">Track Name II</text>
                     </>
                   );
                 })()}
@@ -463,14 +463,14 @@ Generated on: ${new Date().toLocaleString()}
           </div>
         </div>
 
-        {/* Post Assessment Performance */}
+        {/* Track Performance */}
         <div className="lg:col-span-4 bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm flex flex-col justify-between">
-          <h3 className="font-extrabold text-slate-900 text-sm mb-4">Post Assessment Performance</h3>
+          <h3 className="font-extrabold text-slate-900 text-sm mb-4">Track Performance</h3>
 
           <div className="grid grid-cols-2 gap-4 my-auto">
             {/* Gauge 1 */}
             <div className="flex flex-col items-center text-center p-3 rounded-2xl bg-purple-50/50 border border-purple-100">
-              <span className="text-[11px] font-bold text-slate-600 mb-2">Post Assessment I</span>
+              <span className="text-[11px] font-bold text-slate-600 mb-2">Track Name I</span>
               <div className="relative flex items-center justify-center my-1">
                 <svg width="90" height="90" viewBox="0 0 100 100" className="transform -rotate-90">
                   <circle cx="50" cy="50" r="38" fill="none" stroke="#E9D5FF" strokeWidth="12" />
@@ -494,7 +494,7 @@ Generated on: ${new Date().toLocaleString()}
 
             {/* Gauge 2 */}
             <div className="flex flex-col items-center text-center p-3 rounded-2xl bg-blue-50/50 border border-blue-100">
-              <span className="text-[11px] font-bold text-slate-600 mb-2">Post Assessment II</span>
+              <span className="text-[11px] font-bold text-slate-600 mb-2">Track Name II</span>
               <div className="relative flex items-center justify-center my-1">
                 <svg width="90" height="90" viewBox="0 0 100 100" className="transform -rotate-90">
                   <circle cx="50" cy="50" r="38" fill="none" stroke="#BFDBFE" strokeWidth="12" />

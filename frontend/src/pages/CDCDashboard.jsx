@@ -68,24 +68,39 @@ const CDCDashboard = ({ user }) => {
   const rawEntries = Object.entries(rawScores);
 
   const getScoreForTest = (num, defaultKey) => {
+    // 1. Try defaultKey (e.g. "Track Name I")
     if (rawScores[defaultKey] !== undefined && rawScores[defaultKey] !== null && rawScores[defaultKey] !== '') {
       return rawScores[defaultKey];
     }
+    // 2. Try legacy post assessment keys
+    if (num === 9) {
+      if (rawScores["Post Assess. I"] !== undefined) return rawScores["Post Assess. I"];
+      if (rawScores["Post Assessment I"] !== undefined) return rawScores["Post Assessment I"];
+      if (rawScores["Post Assessment II-I"] !== undefined) return rawScores["Post Assessment II-I"];
+    }
+    if (num === 23) {
+      if (rawScores["Post Assess. II"] !== undefined) return rawScores["Post Assess. II"];
+      if (rawScores["Post Assessment II"] !== undefined) return rawScores["Post Assessment II"];
+      if (rawScores["Post Assessment II-II"] !== undefined) return rawScores["Post Assessment II-II"];
+    }
+    // 3. Try standard "Test N" key
     const altTestKey = `Test ${num}`;
     if (rawScores[altTestKey] !== undefined && rawScores[altTestKey] !== null && rawScores[altTestKey] !== '') {
       return rawScores[altTestKey];
     }
+    // 4. Try matching on substring (with collision prevention)
     if (num === 9) {
       const match = rawEntries.find(([k, v]) => {
         const kLow = k.toLowerCase().replace(/\s+/g, '');
-        return kLow.includes('post') && (kLow.includes('ii-i') || kLow.includes('iii') || kLow.includes('2-1'));
+        if (kLow.includes('ii-ii') || kLow.includes('2-2')) return false;
+        return (kLow.includes('post') || kLow.includes('track')) && (kLow.includes('ii-i') || kLow.includes('iii') || kLow.includes('2-1') || kLow.includes('i') || kLow.includes('1'));
       });
       if (match && match[1] !== null && match[1] !== '') return match[1];
     }
     if (num === 23) {
       const match = rawEntries.find(([k, v]) => {
         const kLow = k.toLowerCase().replace(/\s+/g, '');
-        return kLow.includes('post') && (kLow.includes('ii-ii') || kLow.includes('iiii') || kLow.includes('2-2'));
+        return (kLow.includes('post') || kLow.includes('track')) && (kLow.includes('ii-ii') || kLow.includes('iiii') || kLow.includes('2-2') || kLow.includes('ii') || kLow.includes('2'));
       });
       if (match && match[1] !== null && match[1] !== '') return match[1];
     }
@@ -95,8 +110,8 @@ const CDCDashboard = ({ user }) => {
   const testList = Array.from({ length: 30 }, (_, i) => {
     const num = i + 1;
     let key = `Test ${num}`;
-    if (num === 9) key = "Post Assess. I";
-    if (num === 23) key = "Post Assess. II";
+    if (num === 9) key = "Track Name I";
+    if (num === 23) key = "Track Name II";
 
     const scoreVal = getScoreForTest(num, key);
     const isUnattempted = scoreVal === null || scoreVal === undefined || scoreVal === '';
@@ -332,10 +347,10 @@ const CDCDashboard = ({ user }) => {
               {/* Crisp Un-stretched Milestone Text Labels */}
               <div className="absolute top-0 left-0 right-0 h-4 pointer-events-none z-10">
                 <span className="absolute -translate-x-1/2 text-[10px] font-extrabold text-purple-600 tracking-tight whitespace-nowrap" style={{ left: `${(8 / 29) * 100}%` }}>
-                  Post Assessment I
+                  Track Name I
                 </span>
                 <span className="absolute -translate-x-1/2 text-[10px] font-extrabold text-purple-600 tracking-tight whitespace-nowrap" style={{ left: `${(22 / 29) * 100}%` }}>
-                  Post Assessment II
+                  Track Name II
                 </span>
               </div>
 
@@ -586,7 +601,7 @@ const CDCDashboard = ({ user }) => {
                   </div>
                   <div className="pt-2 border-t border-slate-200/60 text-[10px] text-slate-500 space-y-0.5">
                     <p>Tests: <strong className="text-slate-700">{semKey==='I-II'||semKey==='II-I'?'1 - 8':'9 - 23'}</strong></p>
-                    <p className="text-indigo-600 font-semibold truncate">Post Assess.: {data.performance}%</p>
+                    <p className="text-indigo-600 font-semibold truncate">Track Score: {data.performance}%</p>
                   </div>
                 </div>
               </div>
@@ -594,31 +609,139 @@ const CDCDashboard = ({ user }) => {
           </div>
         </div>
 
-        {/* Post Assessment Milestones (5 cols) */}
-        <div className="lg:col-span-5 bg-white rounded-3xl border border-slate-200/80 p-6 shadow-sm flex flex-col justify-between">
-          <div className="mb-4">
+        {/* Track Name Milestones (5 cols) */}
+        <div className="lg:col-span-5 bg-white rounded-3xl border border-slate-200/80 p-6 shadow-sm flex flex-col justify-between min-h-[380px]">
+          <div className="mb-2">
             <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
               <Target className="text-emerald-600" size={18} />
-              <span>POST ASSESSMENT MILESTONES</span>
+              <span>TRACK NAME MILESTONES</span>
             </h3>
             <p className="text-slate-400 text-xs mt-0.5">Crucial evaluation based on intensive semester track training weeks</p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {Object.entries(post_assessments || {}).map(([title, score]) => (
-              <div key={title} className="bg-gradient-to-br from-slate-900 to-indigo-950 p-5 rounded-2xl text-white flex flex-col justify-between shadow-md">
-                <div>
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 block mb-1">{title}</span>
-                  <p className="text-xs text-slate-300 font-medium">Semester Track Evaluation</p>
+          {/* Bar Graph in the middle white space */}
+          {(() => {
+            const items = Object.entries(post_assessments || {}).map(([title, score]) => {
+              // Check II-II first because II-II contains II-I
+              const isSem2_2 = title.includes("II-II") || title.includes("2-2");
+              const isSem2_1 = !isSem2_2 && (title.includes("II-I") || title.includes("2-1"));
+              
+              let semKey = "";
+              if (isSem2_2) semKey = "II-II";
+              else if (isSem2_1) semKey = "II-I";
+              
+              const trackName = semKey && domain_tracks?.[semKey]?.domain ? domain_tracks[semKey].domain : title.replace(/Post Assessment/i, "Track Name");
+              const semesterLabel = semKey ? `Sem ${semKey}` : "";
+              
+              return {
+                title,
+                score: parseFloat(score),
+                trackName,
+                semesterLabel
+              };
+            });
+
+            return (
+              <div className="my-6 flex-1 flex flex-col justify-end min-h-[220px]">
+                {/* Graph Area */}
+                <div className="relative h-36 w-full px-6 sm:px-10">
+                  {/* Grid Lines */}
+                  <div className="absolute inset-0 flex flex-col justify-between pointer-events-none select-none text-[9px] text-slate-300 font-extrabold pb-1">
+                    <div className="w-full border-b border-slate-100 flex justify-between"><span>100%</span></div>
+                    <div className="w-full border-b border-slate-100 flex justify-between"><span>75%</span></div>
+                    <div className="w-full border-b border-slate-100 flex justify-between"><span>50%</span></div>
+                    <div className="w-full border-b border-slate-100 flex justify-between"><span>25%</span></div>
+                    <div className="w-full border-b border-slate-100 flex justify-between"><span>0%</span></div>
+                  </div>
+
+                  {/* Bars Container */}
+                  <div className="absolute inset-y-0 inset-x-6 sm:inset-x-10 flex items-end justify-around gap-6 sm:gap-12">
+                    {items.map((item, idx) => {
+                      const barHeight = Math.min(item.score, 100);
+                      const backgroundStyle = idx === 0 
+                        ? "linear-gradient(to top, #10b981, #34d399)" 
+                        : "linear-gradient(to top, #8b5cf6, #c084fc)";
+                      const textTheme = idx === 0 ? "text-emerald-600" : "text-purple-600";
+                      const bgTheme = idx === 0 ? "bg-emerald-50" : "bg-purple-50";
+
+                      return (
+                        <div key={item.title} className="flex flex-col items-center flex-1 h-full justify-end group relative">
+                          {/* Hover Score Badge */}
+                          <div className="absolute -top-7 opacity-0 group-hover:opacity-100 transition-all duration-300 -translate-y-1 group-hover:translate-y-0 z-20 pointer-events-none">
+                            <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full ${bgTheme} ${textTheme} shadow-sm border border-slate-100 whitespace-nowrap`}>
+                              {item.score}%
+                            </span>
+                          </div>
+
+                          {/* Bar Capsule */}
+                          <div className="w-12 sm:w-16 h-full bg-slate-50/50 rounded-t-xl overflow-hidden relative shadow-inner border border-slate-100/50 flex items-end">
+                            <div 
+                              className="w-full rounded-t-xl transition-all duration-1000 ease-out origin-bottom transform group-hover:scale-x-105"
+                              style={{ height: `${barHeight}%`, background: backgroundStyle }}
+                            >
+                              <div className="absolute top-0 left-0 right-0 h-1 bg-white/20"></div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-                <div className="mt-4 pt-3 border-t border-white/10 flex items-baseline justify-between">
-                  <span className="text-2xl font-black">{score}%</span>
-                  <span className="text-[10px] text-emerald-400 font-bold flex items-center gap-1">
-                    <CheckCircle2 size={12} /> Evaluated
-                  </span>
+
+                {/* Labels Area */}
+                <div className="flex justify-around gap-6 sm:gap-12 px-6 sm:px-10 mt-3">
+                  {items.map((item, idx) => (
+                    <div key={item.title} className="flex flex-col items-center flex-1 text-center max-w-[150px]">
+                      {/* Static Score label */}
+                      <span className="text-xs font-black text-slate-800">{item.score}%</span>
+                      {/* Track Name */}
+                      <p className="text-[11px] font-extrabold text-slate-800 truncate w-full mt-0.5" title={item.trackName}>
+                        {item.trackName}
+                      </p>
+                      {/* Semester */}
+                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">
+                        {item.semesterLabel}
+                      </span>
+                    </div>
+                  ))}
                 </div>
               </div>
-            ))}
+            );
+          })()}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {Object.entries(post_assessments || {}).map(([title, score]) => {
+              // Check II-II first because II-II contains II-I
+              const isSem2_2 = title.includes("II-II") || title.includes("2-2");
+              const isSem2_1 = !isSem2_2 && (title.includes("II-I") || title.includes("2-1"));
+              
+              let semKey = "";
+              if (isSem2_2) semKey = "II-II";
+              else if (isSem2_1) semKey = "II-I";
+              
+              const trackName = semKey && domain_tracks?.[semKey]?.domain ? domain_tracks[semKey].domain : title.replace(/Post Assessment/i, "Track Name");
+              const semesterLabel = semKey ? `Sem ${semKey}` : "";
+
+              return (
+                <div key={title} className="bg-gradient-to-br from-slate-900 to-indigo-950 p-5 rounded-2xl text-white flex flex-col justify-between shadow-md hover:shadow-lg transition-shadow duration-300">
+                  <div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 block mb-1">
+                      Track Name {semesterLabel.replace("Sem ", "")}
+                    </span>
+                    <h4 className="font-extrabold text-white text-xs leading-snug mb-1 truncate" title={trackName}>
+                      {trackName}
+                    </h4>
+                    <p className="text-[10px] text-slate-400 font-medium">Semester Track Evaluation</p>
+                  </div>
+                  <div className="mt-4 pt-3 border-t border-white/10 flex items-baseline justify-between">
+                    <span className="text-2xl font-black">{score}%</span>
+                    <span className="text-[10px] text-emerald-400 font-bold flex items-center gap-1">
+                      <CheckCircle2 size={12} /> Evaluated
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
 

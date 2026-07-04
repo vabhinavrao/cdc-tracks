@@ -1,4 +1,4 @@
-// src/pages/HitamProjects.jsx
+// src/pages/MultiStackProjects.jsx
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import axios from 'axios';
@@ -9,7 +9,7 @@ import {
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
-const HitamProjects = ({ user }) => {
+const MultiStackProjects = ({ user }) => {
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -23,10 +23,10 @@ const HitamProjects = ({ user }) => {
   const [formMessage, setFormMessage] = useState(null);
 
   useEffect(() => {
-    fetchHitamProjects();
+    fetchMultiStackProjects();
   }, [user]);
 
-  const fetchHitamProjects = async () => {
+  const fetchMultiStackProjects = async () => {
     setLoading(true);
     setError(null);
     try {
@@ -36,8 +36,8 @@ const HitamProjects = ({ user }) => {
       });
       setProjects(res.data.projects || []);
     } catch (err) {
-      console.error("Failed to fetch HITAM projects", err);
-      setError("Failed to load HITAM projects. Please try signing in again.");
+      console.error("Failed to fetch Multi-Stack projects", err);
+      setError("Failed to load Multi-Stack projects. Please try signing in again.");
     } finally {
       setLoading(false);
     }
@@ -83,7 +83,7 @@ const HitamProjects = ({ user }) => {
       setFormMessage({ type: 'success', text: 'Your application has been submitted to CDC Admin!' });
       setTimeout(() => {
         handleCloseModal();
-        fetchHitamProjects();
+        fetchMultiStackProjects();
       }, 1200);
     } catch (err) {
       setFormMessage({ type: 'error', text: err.response?.data?.detail || 'Failed to submit application.' });
@@ -120,9 +120,9 @@ const HitamProjects = ({ user }) => {
         </div>
         <div className="max-w-3xl relative z-10 space-y-3">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-xs font-bold uppercase tracking-wider">
-            <Sparkles size={14} className="text-amber-400" /> HITAM Institutional Flagships
+            <Sparkles size={14} className="text-amber-400" /> Multi-Stack Institutional Flagships
           </div>
-          <h1 className="text-3xl sm:text-4xl font-black tracking-tight">HITAM Real-World Projects</h1>
+          <h1 className="text-3xl sm:text-4xl font-black tracking-tight">Multi-Stack Real-World Projects</h1>
           <p className="text-slate-300 text-sm leading-relaxed font-normal">
             Work directly on institutional systems, gamified CDC platforms, and real placement readiness applications. Request to join flagship projects, submit your motivation, and get interviewed by CDC leaders.
           </p>
@@ -135,7 +135,7 @@ const HitamProjects = ({ user }) => {
           <Search className="absolute left-3.5 top-3 text-slate-400" size={18} />
           <input
             type="text"
-            placeholder="Search HITAM projects by code, title or stack..."
+            placeholder="Search Multi-Stack projects by code, title or stack..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-10 pr-4 py-2 rounded-xl border border-slate-200 text-xs font-bold outline-none focus:border-indigo-500"
@@ -148,12 +148,12 @@ const HitamProjects = ({ user }) => {
 
       {/* Projects Grid */}
       {loading ? (
-        <div className="py-16 text-center text-slate-400 font-medium">Loading HITAM projects catalog...</div>
+        <div className="py-16 text-center text-slate-400 font-medium">Loading Multi-Stack projects catalog...</div>
       ) : error ? (
         <div className="p-6 bg-rose-50 border border-rose-200 rounded-2xl text-rose-700 font-bold text-center">{error}</div>
       ) : filteredProjects.length === 0 ? (
         <div className="py-16 text-center bg-white rounded-3xl border border-slate-200 text-slate-400 font-bold">
-          No HITAM projects matching your query.
+          No Multi-Stack projects matching your query.
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -292,7 +292,7 @@ const HitamProjects = ({ user }) => {
                 <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-1">Why do you want to work on this project? *</label>
                 <textarea
                   rows={4}
-                  placeholder="Explain your relevant technical experience, motivation, and why you are interested in this specific HITAM institutional project..."
+                  placeholder="Explain your relevant technical experience, motivation, and why you are interested in this specific Multi-Stack institutional project..."
                   value={reason}
                   onChange={(e) => setReason(e.target.value)}
                   className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-normal outline-none focus:border-indigo-500"
@@ -330,4 +330,4 @@ const HitamProjects = ({ user }) => {
   );
 };
 
-export default HitamProjects;
+export default MultiStackProjects;

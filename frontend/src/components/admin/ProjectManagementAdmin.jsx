@@ -109,7 +109,7 @@ const ProjectManagementAdmin = ({ user }) => {
             Project Management & Department Insights
           </h2>
           <p className="text-xs text-slate-500 font-medium mt-1">
-            View student project choices, faculty guides assigned by department, and manage HITAM project applications.
+            View student project choices, faculty guides assigned by department, and manage Multi-Stack project applications.
           </p>
         </div>
 
@@ -157,7 +157,7 @@ const ProjectManagementAdmin = ({ user }) => {
           }`}
         >
           <Sparkles size={16} className="text-amber-400" />
-          <span>HITAM Project Requests</span>
+          <span>Multi-Stack Project Requests</span>
         </button>
       </div>
 
@@ -249,10 +249,10 @@ const ProjectManagementAdmin = ({ user }) => {
           </div>
 
           {loadingRequests ? (
-            <div className="py-12 text-center text-slate-400 font-medium">Loading HITAM project requests...</div>
+            <div className="py-12 text-center text-slate-400 font-medium">Loading Multi-Stack project requests...</div>
           ) : hitamRequests.length === 0 ? (
             <div className="py-12 text-center text-slate-400 font-bold bg-slate-50 rounded-2xl">
-              No HITAM project requests found matching this filter.
+              No Multi-Stack project requests found matching this filter.
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -318,7 +318,7 @@ const ProjectManagementAdmin = ({ user }) => {
         <div className="fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
           <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 relative text-left">
             <div className="flex justify-between items-center pb-3 border-b border-slate-100">
-              <h3 className="text-base font-extrabold text-slate-900">Review HITAM Request</h3>
+              <h3 className="text-base font-extrabold text-slate-900">Review Multi-Stack Request</h3>
               <button onClick={() => setEditingRequest(null)} className="text-slate-400 hover:text-slate-600 text-lg font-bold">✕</button>
             </div>
 

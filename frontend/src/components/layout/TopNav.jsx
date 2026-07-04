@@ -50,9 +50,9 @@ const TopNav = ({ user, onLogout }) => {
               <span>Explore Tracks</span>
             </NavLink>
 
-            <NavLink to="/hitam-projects" className={navLinkClass}>
+            <NavLink to="/multi-stack-projects" className={navLinkClass}>
               <Sparkles size={16} className="text-amber-500" />
-              <span>HITAM Projects</span>
+              <span>Multi-Stack Projects</span>
             </NavLink>
 
             {user ? (
@@ -133,9 +133,9 @@ const TopNav = ({ user, onLogout }) => {
             <span>Explore Tracks</span>
           </NavLink>
 
-          <NavLink to="/hitam-projects" className={mobileNavLinkClass} onClick={closeMobileMenu}>
+          <NavLink to="/multi-stack-projects" className={mobileNavLinkClass} onClick={closeMobileMenu}>
             <Sparkles size={20} className="text-amber-500" />
-            <span>HITAM Projects</span>
+            <span>Multi-Stack Projects</span>
           </NavLink>
 
           {user ? (

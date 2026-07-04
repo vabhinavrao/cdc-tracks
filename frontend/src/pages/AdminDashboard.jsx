@@ -361,10 +361,10 @@ const AdminDashboard = ({ user }) => {
                 {/* Crisp Un-stretched Milestone Text Labels */}
                 <div className="absolute top-0 left-0 right-0 h-4 pointer-events-none z-10">
                   <span className="absolute -translate-x-1/2 text-[10px] font-extrabold text-purple-600 tracking-tight whitespace-nowrap" style={{ left: `${(8 / 29) * 100}%` }}>
-                    Post Assessment I
+                    Track Name I
                   </span>
                   <span className="absolute -translate-x-1/2 text-[10px] font-extrabold text-purple-600 tracking-tight whitespace-nowrap" style={{ left: `${(22 / 29) * 100}%` }}>
-                    Post Assessment II
+                    Track Name II
                   </span>
                 </div>
 
@@ -603,12 +603,12 @@ const AdminDashboard = ({ user }) => {
 
           <div className="lg:col-span-5 bg-slate-50 rounded-3xl border border-slate-200 p-5 space-y-3">
             <h3 className="text-xs font-extrabold text-slate-900 uppercase flex items-center gap-1.5">
-              <Target size={14} className="text-emerald-600" /> Post Assessments
+              <Target size={14} className="text-emerald-600" /> Track Name Performance
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {Object.entries(post_assessments || {}).map(([title, score]) => (
                 <div key={title} className="bg-slate-900 text-white p-4 rounded-2xl flex flex-col justify-between">
-                  <span className="text-[10px] font-bold uppercase text-emerald-400">{title}</span>
+                  <span className="text-[10px] font-bold uppercase text-emerald-400">{title.replace(/Post Assessment/i, "Track Name")}</span>
                   <span className="text-2xl font-black mt-2">{score}%</span>
                 </div>
               ))}
@@ -709,7 +709,7 @@ const AdminDashboard = ({ user }) => {
           }`}
         >
           <BookOpen size={16} />
-          <span>Projects & HITAM Requests</span>
+          <span>Projects & Multi-Stack Requests</span>
         </button>
 
         <button

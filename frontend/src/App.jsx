@@ -8,7 +8,7 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import CDCDashboard from './pages/CDCDashboard';
 import AdminDashboard from './pages/AdminDashboard';
-import HitamProjects from './pages/HitamProjects';
+import MultiStackProjects from './pages/MultiStackProjects';
 
 // A beautifully styled profile card for the Profile route
 const Profile = ({ user, onLogout }) => {
@@ -97,7 +97,7 @@ function App() {
           <Routes>
             {/* Explore page remains public */}
             <Route path="/" element={<ExploreTracks user={user} />} />
-            <Route path="/hitam-projects" element={<HitamProjects user={user} />} />
+            <Route path="/multi-stack-projects" element={<MultiStackProjects user={user} />} />
             
             {/* Login Route */}
             <Route 
