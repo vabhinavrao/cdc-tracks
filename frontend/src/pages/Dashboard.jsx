@@ -1,7 +1,7 @@
 // src/pages/Dashboard.jsx
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { BookOpen, Award, ChevronRight, Bookmark, AlertCircle, Compass, ArrowRight, Sparkles, TrendingUp, BarChart3 } from 'lucide-react';
+import { BookOpen, Award, ChevronRight, Bookmark, AlertCircle, Compass, ArrowRight, Sparkles, TrendingUp, BarChart3, Lock } from 'lucide-react';
 import axios from 'axios';
 import { getAllTracksSummary, getBranchDisplayName, isTrackPreferredForBranch } from '../utils/trackLoader';
 
