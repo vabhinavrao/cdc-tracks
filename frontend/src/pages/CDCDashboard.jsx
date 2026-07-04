@@ -214,16 +214,6 @@ const CDCDashboard = ({ user }) => {
             <span className="text-[11px] text-slate-400 font-medium">Performance Band</span>
           </div>
 
-          {/* CDC Rank */}
-          <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-sm flex flex-col justify-between items-center text-center">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">CDC Rank</span>
-            <div className="my-1 text-2xl sm:text-3xl font-black text-slate-900 flex items-baseline gap-0.5">
-              <span className="text-slate-400 text-lg font-bold">#</span>
-              {overall.cdc_rank || '207'}
-            </div>
-            <span className="text-[11px] text-slate-400 font-medium">Out of 815 Students</span>
-          </div>
-
           {/* CDC Grade Score */}
           <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-sm flex flex-col justify-between items-center text-center">
             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">CDC Grade Score</span>
@@ -233,13 +223,24 @@ const CDCDashboard = ({ user }) => {
             <span className="text-[11px] text-slate-400 font-medium">Overall Score</span>
           </div>
 
-          {/* Tests Attempted */}
-          <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-sm flex flex-col justify-between items-center text-center">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Tests Attempted</span>
-            <div className="my-1 text-2xl sm:text-3xl font-black text-slate-900">
-              {attemptedCount} <span className="text-sm font-normal text-slate-400">/ 30</span>
+          {/* Batch Rank */}
+          <div className="bg-white p-5 rounded-3xl border border-indigo-100 bg-indigo-50/10 shadow-sm flex flex-col justify-between items-center text-center">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-500">Batch Rank</span>
+            <div className="my-1 text-2xl sm:text-3xl font-black text-indigo-700 flex items-baseline gap-0.5">
+              <span className="text-indigo-400 text-lg font-bold">#</span>
+              {overall.batch_rank || overall.cdc_rank || '207'}
             </div>
-            <span className="text-[11px] text-slate-400 font-medium">{attemptedPct}% Completed</span>
+            <span className="text-[11px] text-indigo-400 font-medium">Out of {overall.batch_students || 815} Students</span>
+          </div>
+
+          {/* Branch Rank */}
+          <div className="bg-white p-5 rounded-3xl border border-purple-100 bg-purple-50/10 shadow-sm flex flex-col justify-between items-center text-center">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-purple-500">Branch Rank</span>
+            <div className="my-1 text-2xl sm:text-3xl font-black text-purple-700 flex items-baseline gap-0.5">
+              <span className="text-purple-400 text-lg font-bold">#</span>
+              {overall.branch_rank || 'N/A'}
+            </div>
+            <span className="text-[11px] text-purple-400 font-medium">Out of {overall.branch_students || 278} ({student.branch || 'N/A'})</span>
           </div>
 
         </div>

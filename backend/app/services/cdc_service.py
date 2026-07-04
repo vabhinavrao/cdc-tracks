@@ -174,3 +174,81 @@ def get_cdc_performance_by_roll(db: Session, roll_number: str, email: str = None
 
     return record
 
+
+def calculate_ranks(db: Session, student_record: CDCPerformance):
+    """
+    Calculates batch_rank and branch_rank for a student record based on cdc_rank.
+    """
+    if not student_record:
+        return {
+            "batch_rank": None,
+            "branch_rank": None,
+            "batch_students": 0,
+            "branch_students": 0
+        }
+
+    batch_students = db.query(CDCPerformance).filter(
+        CDCPerformance.batch_year == student_record.batch_year
+    ).count()
+    branch_students = db.query(CDCPerformance).filter(
+        CDCPerformance.batch_year == student_record.batch_year,
+        func.upper(CDCPerformance.branch) == func.upper(student_record.branch)
+    ).count()
+
+    if student_record.cdc_rank is None:
+        return {
+            "batch_rank": None,
+            "branch_rank": None,
+            "batch_students": batch_students,
+            "branch_students": branch_students
+        }
+
+    batch_rank = db.query(CDCPerformance).filter(
+        CDCPerformance.batch_year == student_record.batch_year,
+        CDCPerformance.cdc_rank < student_record.cdc_rank
+    ).count() + 1
+
+    branch_rank = db.query(CDCPerformance).filter(
+        CDCPerformance.batch_year == student_record.batch_year,
+        func.upper(CDCPerformance.branch) == func.upper(student_record.branch),
+        CDCPerformance.cdc_rank < student_record.cdc_rank
+    ).count() + 1
+
+    return {
+        "batch_rank": batch_rank,
+        "branch_rank": branch_rank,
+        "batch_students": batch_students,
+        "branch_students": branch_students
+    }
+
+
+def get_branch_ranks_map(db: Session):
+    """
+    Computes absolute branch ranks for all students in the database.
+    Returns a dictionary mapping roll_number to its branch rank.
+    """
+    all_records = db.query(
+        CDCPerformance.roll_number,
+        CDCPerformance.branch,
+        CDCPerformance.batch_year,
+        CDCPerformance.cdc_rank
+    ).all()
+
+    # Group by (batch_year, branch)
+    by_group = {}
+    for roll, branch, batch, rank in all_records:
+        key = (batch, (branch or "").upper())
+        if key not in by_group:
+            by_group[key] = []
+        by_group[key].append((roll, rank))
+
+    # Sort each group by rank ascending (treating None as infinity)
+    branch_ranks = {}
+    for key, members in by_group.items():
+        members.sort(key=lambda x: x[1] if x[1] is not None else 999999)
+        for idx, (roll, rank) in enumerate(members):
+            branch_ranks[roll] = idx + 1
+
+    return branch_ranks
+
+

@@ -219,7 +219,7 @@ const Dashboard = ({ user }) => {
               </span>
             </div>
 
-            {/* Top Stat Pills: Band & Rank */}
+            {/* Top Stat Pills: Band & Grade Score */}
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 flex flex-col items-center text-center">
                 <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">CDC Band</span>
@@ -230,39 +230,39 @@ const Dashboard = ({ user }) => {
               </div>
 
               <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 flex flex-col items-center text-center">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">CDC Rank</span>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Grade Score</span>
                 <div className="my-1.5 h-11 flex items-center justify-center text-2xl font-black text-slate-900">
-                  <span className="text-slate-400 text-base font-bold mr-0.5">#</span>
-                  {cdcOverall.cdc_rank || '207'}
+                  {cdcOverall.cdc_grade_score ?? 78}%
                 </div>
-                <span className="text-[10px] text-slate-400 font-medium">Out of 815</span>
+                <span className="text-[10px] text-slate-400 font-medium">Overall Score</span>
               </div>
             </div>
 
-            {/* Details Grid: Grade Score & Tests Attempted */}
-            <div className="space-y-3 pt-1">
-              <div className="bg-emerald-50/50 p-3.5 rounded-xl border border-emerald-100 flex items-center justify-between">
+            {/* Ranks Section (Batch Rank & Branch Rank) */}
+            <div className="grid grid-cols-2 gap-3 pt-1">
+              <div className="bg-indigo-50/50 p-3.5 rounded-xl border border-indigo-100 flex flex-col justify-between">
                 <div>
-                  <span className="text-xs text-slate-500 font-bold block">CDC Grade Score</span>
-                  <span className="text-xl font-black text-emerald-700 block mt-0.5">{cdcOverall.cdc_grade_score ?? 78}%</span>
-                </div>
-                <div className="p-2.5 bg-emerald-100 text-emerald-700 rounded-lg">
-                  <TrendingUp size={20} />
-                </div>
-              </div>
-
-              <div className="bg-blue-50/50 p-3.5 rounded-xl border border-blue-100 flex items-center justify-between">
-                <div>
-                  <span className="text-xs text-slate-500 font-bold block">Tests Attempted</span>
-                  <span className="text-xl font-black text-blue-700 block mt-0.5">
-                    {attemptedCount} <span className="text-xs font-normal text-slate-400">/ 30</span>
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-500 block">Batch Rank</span>
+                  <span className="text-xl font-black text-indigo-700 block mt-1">
+                    <span className="text-indigo-400 text-sm font-bold mr-0.5">#</span>
+                    {cdcOverall.batch_rank || cdcOverall.cdc_rank || 'N/A'}
                   </span>
                 </div>
-                <div className="p-2.5 bg-blue-100 text-blue-700 rounded-lg">
-                  <BarChart3 size={20} />
+                <span className="text-[9px] text-indigo-400 font-medium mt-1">Out of {cdcOverall.batch_students || 815}</span>
+              </div>
+
+              <div className="bg-purple-50/50 p-3.5 rounded-xl border border-purple-100 flex flex-col justify-between">
+                <div>
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-purple-500 block">Branch Rank</span>
+                  <span className="text-xl font-black text-purple-700 block mt-1">
+                    <span className="text-purple-400 text-sm font-bold mr-0.5">#</span>
+                    {cdcOverall.branch_rank || 'N/A'}
+                  </span>
                 </div>
+                <span className="text-[9px] text-purple-400 font-medium mt-1">Out of {cdcOverall.branch_students || 278}</span>
               </div>
             </div>
+
 
             {/* Quick Stats: Avg Perf & Consistency */}
             <div className="grid grid-cols-2 gap-3 pt-1 border-t border-slate-100 text-slate-700">

@@ -317,6 +317,9 @@ def get_cdc_dashboard_data(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"No CDC Performance record found for roll number '{user.roll_number}' or email '{user.email}'."
         )
+    
+    from app.services.cdc_service import calculate_ranks
+    ranks = calculate_ranks(db, cdc_record)
         
     return {
         "student": {
@@ -333,12 +336,17 @@ def get_cdc_dashboard_data(
             "avg_performance": cdc_record.avg_performance,
             "consistency_score": cdc_record.consistency_score,
             "participation": cdc_record.participation,
-            "cie_score": cdc_record.cie_score
+            "cie_score": cdc_record.cie_score,
+            "batch_rank": ranks["batch_rank"],
+            "branch_rank": ranks["branch_rank"],
+            "batch_students": ranks["batch_students"],
+            "branch_students": ranks["branch_students"]
         },
         "post_assessments": cdc_record.post_assessments,
         "domain_tracks": cdc_record.domain_tracks,
         "test_scores": cdc_record.test_scores
     }
+
 
 class SyncSheetsRequest(BaseModel):
     sheet1_id: str

@@ -131,6 +131,9 @@ def get_admin_students(
     else:
         query = query.order_by(CDCPerformance.cdc_rank.asc().nullslast())
         
+    from app.services.cdc_service import get_branch_ranks_map
+    branch_ranks = get_branch_ranks_map(db)
+    
     records = query.all()
     
     student_list = []
@@ -141,6 +144,7 @@ def get_admin_students(
             "branch": r.branch or "N/A",
             "email": r.email or "N/A",
             "cdc_rank": r.cdc_rank,
+            "branch_rank": branch_ranks.get(r.roll_number),
             "cdc_band": r.cdc_band or "N/A",
             "avg_performance": r.avg_performance,
             "cie_score": r.cie_score,
@@ -151,6 +155,7 @@ def get_admin_students(
         "count": len(student_list),
         "students": student_list
     }
+
 
 
 @router.get("/student/{roll_number}")
@@ -181,6 +186,9 @@ def get_admin_student_detail(
         (func.lower(User.email) == (record.email or "").lower())
     ).first()
     
+    from app.services.cdc_service import calculate_ranks
+    ranks = calculate_ranks(db, record)
+    
     return {
         "student": {
             "name": record.name,
@@ -197,7 +205,11 @@ def get_admin_student_detail(
             "avg_performance": record.avg_performance,
             "consistency_score": record.consistency_score,
             "participation": record.participation,
-            "cie_score": record.cie_score
+            "cie_score": record.cie_score,
+            "batch_rank": ranks["batch_rank"],
+            "branch_rank": ranks["branch_rank"],
+            "batch_students": ranks["batch_students"],
+            "branch_students": ranks["branch_students"]
         },
         "post_assessments": record.post_assessments or {},
         "domain_tracks": record.domain_tracks or {},

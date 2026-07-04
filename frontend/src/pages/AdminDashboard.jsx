@@ -280,22 +280,22 @@ const AdminDashboard = ({ user }) => {
               <div className={`w-11 h-11 rounded-xl flex items-center justify-center text-xl font-black shadow-sm my-1 ${getBandBadgeColor(overall.cdc_band)}`}>
                 {overall.cdc_band || 'B'}
               </div>
-              <span className="text-[10px] text-slate-400 font-medium">Band Rank</span>
-            </div>
-            <div className="bg-slate-50 p-4 rounded-3xl border border-slate-200 text-center flex flex-col justify-between items-center">
-              <span className="text-[10px] font-bold uppercase text-slate-400">CDC Rank</span>
-              <div className="my-1 text-2xl font-black text-slate-900">#{overall.cdc_rank || 'N/A'}</div>
-              <span className="text-[10px] text-slate-400 font-medium">College Rank</span>
+              <span className="text-[10px] text-slate-400 font-medium">Performance Band</span>
             </div>
             <div className="bg-slate-50 p-4 rounded-3xl border border-slate-200 text-center flex flex-col justify-between items-center">
               <span className="text-[10px] font-bold uppercase text-slate-400">Grade Score</span>
               <div className="my-1 text-2xl font-black text-slate-900">{overall.cdc_grade_score}%</div>
               <span className="text-[10px] text-slate-400 font-medium">Overall Score</span>
             </div>
-            <div className="bg-slate-50 p-4 rounded-3xl border border-slate-200 text-center flex flex-col justify-between items-center">
-              <span className="text-[10px] font-bold uppercase text-slate-400">Tests Attempted</span>
-              <div className="my-1 text-2xl font-black text-slate-900">{attemptedCount} <span className="text-xs text-slate-400 font-normal">/30</span></div>
-              <span className="text-[10px] text-slate-400 font-medium">{attemptedPct}% Rate</span>
+            <div className="bg-slate-50 p-4 rounded-3xl border border-indigo-200 bg-indigo-50/10 text-center flex flex-col justify-between items-center">
+              <span className="text-[10px] font-bold uppercase text-indigo-500">Batch Rank</span>
+              <div className="my-1 text-2xl font-black text-indigo-700">#{overall.batch_rank || overall.cdc_rank || 'N/A'}</div>
+              <span className="text-[10px] text-indigo-400 font-medium">Out of {overall.batch_students || 815}</span>
+            </div>
+            <div className="bg-slate-50 p-4 rounded-3xl border border-purple-200 bg-purple-50/10 text-center flex flex-col justify-between items-center">
+              <span className="text-[10px] font-bold uppercase text-purple-500">Branch Rank</span>
+              <div className="my-1 text-2xl font-black text-purple-700">#{overall.branch_rank || 'N/A'}</div>
+              <span className="text-[10px] text-purple-400 font-medium">Out of {overall.branch_students || 278}</span>
             </div>
           </div>
         </div>
@@ -957,7 +957,8 @@ const AdminDashboard = ({ user }) => {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="border-b border-slate-200 text-[11px] font-extrabold text-slate-400 uppercase tracking-wider bg-slate-50/50">
-                <th className="py-3 px-4">CDC Rank</th>
+                <th className="py-3 px-4">Batch Rank</th>
+                <th className="py-3 px-4">Branch Rank</th>
                 <th className="py-3 px-4">Student Details</th>
                 <th className="py-3 px-4">Branch</th>
                 <th className="py-3 px-4">Band</th>
@@ -970,7 +971,7 @@ const AdminDashboard = ({ user }) => {
             <tbody className="divide-y divide-slate-100 text-xs">
               {students.length === 0 ? (
                 <tr>
-                  <td colSpan="8" className="py-8 text-center text-slate-400 font-medium">
+                  <td colSpan="9" className="py-8 text-center text-slate-400 font-medium">
                     No students found matching the criteria.
                   </td>
                 </tr>
@@ -983,6 +984,9 @@ const AdminDashboard = ({ user }) => {
                   >
                     <td className="py-3.5 px-4 font-extrabold text-slate-700">
                       #{st.cdc_rank || 'N/A'}
+                    </td>
+                    <td className="py-3.5 px-4 font-extrabold text-slate-500">
+                      #{st.branch_rank || 'N/A'}
                     </td>
                     <td className="py-3.5 px-4">
                       <div className="font-bold text-slate-900 group-hover:text-blue-600 transition-colors">{st.name}</div>
