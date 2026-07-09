@@ -8,18 +8,33 @@ from app.utils import parse_roll_number, get_auto_allocated_track_id
 
 router = APIRouter(prefix="/api/auth", tags=["Authentication"])
 
-ADMIN_EMAILS_SUPER = {
-    "admin@hitam.org": "System Administrator",
-    "cdc_admin@hitam.org": "CDC Administrator",
-    "management@hitam.org": "College Management"
+ADMIN_PREFIXES_SUPER = {
+    # System accounts
+    "admin": "System Administrator",
+    "cdc_admin": "CDC Administrator",
+    "management": "College Management",
+    # Hierarchy - Full Access
+    "principal": "Principal",
+    "dean.careers": "Dean Careers",
+    "director": "Director",
+    "dean.academics": "Dean Academics",
+    "registrar": "Registrar",
+    "assistantdean.careers": "Assistant Dean Careers",
 }
 
-ADMIN_EMAILS_BRANCH = {
-    "hod_cse@hitam.org": ("CSE", "HOD CSE"),
-    "hod_csm@hitam.org": ("CSM", "HOD CSE AI/ML"),
-    "hod_ece@hitam.org": ("ECE", "HOD ECE"),
-    "hod_mech@hitam.org": ("MECH", "HOD MECH"),
-    "hod_eee@hitam.org": ("EEE", "HOD EEE")
+ADMIN_PREFIXES_BRANCH = {
+    # Branch Access
+    "cse.hod": ("CSE", "HOD CSE"),
+    "csm.hod": ("CSM", "HOD CSM"),
+    "ece.hod": ("ECE", "HOD ECE"),
+    "eee.hod": ("EEE", "HOD EEE"),
+    "mech.hod": ("MECH", "HOD MECH"),
+    # Keep old HOD prefix support for backward compatibility
+    "hod_cse": ("CSE", "HOD CSE"),
+    "hod_csm": ("CSM", "HOD CSE AI/ML"),
+    "hod_ece": ("ECE", "HOD ECE"),
+    "hod_mech": ("MECH", "HOD MECH"),
+    "hod_eee": ("EEE", "HOD EEE"),
 }
 
 class GoogleLoginRequest(BaseModel):
@@ -31,27 +46,30 @@ class GoogleLoginRequest(BaseModel):
 def google_login(payload: GoogleLoginRequest, db: Session = Depends(get_db)):
     email = payload.email.strip().lower()
     
-    if not email.endswith("@hitam.org"):
+    email_parts = email.split('@')
+    if len(email_parts) != 2:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email domain must be @hitam.org"
+            detail="Invalid email format"
         )
         
-    # Check if email is an authorized Admin or Branch HOD email
-    if email in ADMIN_EMAILS_SUPER:
+    prefix, domain = email_parts
+    
+    # Check if prefix matches an authorized Admin or Branch HOD prefix (allowing both @hitam.org and @gmail.com/etc.)
+    if prefix in ADMIN_PREFIXES_SUPER:
         role = "super_admin"
         assigned_branch = None
-        default_name = payload.name or ADMIN_EMAILS_SUPER[email]
+        default_name = payload.name or ADMIN_PREFIXES_SUPER[prefix]
         parsed_data = {
-            "roll_number": f"ADMIN-{email.split('@')[0].upper()}",
+            "roll_number": f"ADMIN-{prefix.upper()}",
             "joining_year": 2020,
             "graduation_year": 2024,
             "admission_type": "Staff",
             "branch": "Management"
         }
-    elif email in ADMIN_EMAILS_BRANCH:
+    elif prefix in ADMIN_PREFIXES_BRANCH:
         role = "branch_admin"
-        branch_code, hod_title = ADMIN_EMAILS_BRANCH[email]
+        branch_code, hod_title = ADMIN_PREFIXES_BRANCH[prefix]
         assigned_branch = branch_code
         default_name = payload.name or hod_title
         parsed_data = {
@@ -62,7 +80,13 @@ def google_login(payload: GoogleLoginRequest, db: Session = Depends(get_db)):
             "branch": branch_code
         }
     else:
-        # Standard Student Account
+        # Standard Student Account - MUST be @hitam.org
+        if domain != "hitam.org":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Access restricted. Students must use @hitam.org email address."
+            )
+            
         role = "student"
         assigned_branch = None
         default_name = payload.name

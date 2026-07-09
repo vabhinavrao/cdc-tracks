@@ -25,19 +25,53 @@ const decodeGoogleCredential = (token) => {
 
 const Login = ({ onLoginSuccess }) => {
   const [error, setError] = useState('');
-  const [demoEmail, setDemoEmail] = useState('24121A0501@hitam.org');
+  const [demoEmail, setDemoEmail] = useState('principal@gmail.com');
   const [loading, setLoading] = useState(false);
   const [showDemo, setShowDemo] = useState(false);
+  const [activeTab, setActiveTab] = useState('full'); // 'full', 'branch', 'student'
 
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
+  const ADMIN_PREFIXES = [
+    'admin', 'cdc_admin', 'management',
+    'principal', 'dean.careers', 'director', 'dean.academics', 'registrar', 'assistantdean.careers',
+    'cse.hod', 'csm.hod', 'ece.hod', 'eee.hod', 'mech.hod',
+    'hod_cse', 'hod_csm', 'hod_ece', 'hod_eee', 'hod_mech'
+  ];
+
+  const demoAccounts = {
+    full: [
+      { email: 'principal@gmail.com', name: 'Principal', desc: 'Full Access' },
+      { email: 'dean.careers@gmail.com', name: 'Dean (Careers)', desc: 'Full Access' },
+      { email: 'director@gmail.com', name: 'Director', desc: 'Full Access' },
+      { email: 'dean.academics@gmail.com', name: 'Dean (Academics)', desc: 'Full Access' },
+      { email: 'registrar@gmail.com', name: 'Registrar', desc: 'Full Access' },
+      { email: 'assistantdean.careers@gmail.com', name: 'Asst Dean (Careers)', desc: 'Full Access' },
+      { email: 'cdc_admin@hitam.org', name: 'CDC Admin', desc: 'Full Access' }
+    ],
+    branch: [
+      { email: 'cse.hod@gmail.com', name: 'CSE HOD', desc: 'Branch Access (CSE)' },
+      { email: 'csm.hod@gmail.com', name: 'CSM HOD', desc: 'Branch Access (CSM)' },
+      { email: 'ece.hod@gmail.com', name: 'ECE HOD', desc: 'Branch Access (ECE)' },
+      { email: 'eee.hod@gmail.com', name: 'EEE HOD', desc: 'Branch Access (EEE)' },
+      { email: 'mech.hod@gmail.com', name: 'MECH HOD', desc: 'Branch Access (MECH)' }
+    ],
+    student: [
+      { email: '24121A0501@hitam.org', name: 'Demo Student', desc: 'Student' }
+    ]
+  };
 
   const handleLoginResponse = async (email, name = '', picture = '') => {
     setLoading(true);
     setError('');
     
-    // Enforce @hitam.org domain
-    if (!email.toLowerCase().endsWith('@hitam.org')) {
-      setError('Access restricted. You must log in using a @hitam.org email address.');
+    const emailLower = email.toLowerCase();
+    const emailPrefix = emailLower.split('@')[0];
+    const isAdminPrefix = ADMIN_PREFIXES.includes(emailPrefix);
+    
+    // Enforce @hitam.org domain for non-admin accounts
+    if (!emailLower.endsWith('@hitam.org') && !isAdminPrefix) {
+      setError('Access restricted. You must log in using a @hitam.org email address, or an authorized admin account.');
       setLoading(false);
       return;
     }
@@ -77,7 +111,16 @@ const Login = ({ onLoginSuccess }) => {
   const handleDemoSubmit = (e) => {
     e.preventDefault();
     if (!demoEmail) return;
-    handleLoginResponse(demoEmail, 'Demo Student', '');
+    
+    let name = 'Demo User';
+    for (const key in demoAccounts) {
+      const match = demoAccounts[key].find(acc => acc.email.toLowerCase() === demoEmail.trim().toLowerCase());
+      if (match) {
+        name = match.name;
+        break;
+      }
+    }
+    handleLoginResponse(demoEmail.trim(), name, '');
   };
 
   return (
@@ -137,7 +180,7 @@ const Login = ({ onLoginSuccess }) => {
 
           <div className="text-center">
             <span className="text-xs text-slate-400">
-              Only authorized <strong className="text-slate-500">@hitam.org</strong> domains are accepted.
+              Accepts authorized <strong className="text-slate-500">@hitam.org</strong> emails and admin accounts.
             </span>
           </div>
 
@@ -162,59 +205,110 @@ const Login = ({ onLoginSuccess }) => {
             </button>
             
             {showDemo && (
-              <form onSubmit={handleDemoSubmit} className="p-4 bg-white border-t border-slate-200 space-y-4 animate-fade-in">
+              <div className="p-4 bg-white border-t border-slate-200 space-y-4 animate-fade-in">
                 <p className="text-xs text-slate-500 leading-relaxed">
-                  Type or select a demo account email below to test different roles and access controls:
+                  Select a role below to simulate immediate sign-in with matching access privileges:
                 </p>
                 
-                <div className="space-y-1.5">
-                  <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Quick Select Demo Roles:</span>
-                  <div className="flex flex-wrap gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => setDemoEmail('cdc_admin@hitam.org')}
-                      className="px-2.5 py-1 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-md text-xs font-bold transition-colors cursor-pointer"
-                    >
-                      🛡️ CDC Admin (Full Access)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setDemoEmail('hod_cse@hitam.org')}
-                      className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-md text-xs font-bold transition-colors cursor-pointer"
-                    >
-                      🏛️ HOD CSE
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setDemoEmail('24121A0501@hitam.org')}
-                      className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md text-xs font-bold transition-colors cursor-pointer"
-                    >
-                      🎓 Student
-                    </button>
-                  </div>
+                {/* Categorized Tabs */}
+                <div className="bg-slate-100 rounded-xl p-1 flex gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('full')}
+                    className={`py-1.5 px-2 text-xs font-bold rounded-lg flex-1 text-center transition-all cursor-pointer ${
+                      activeTab === 'full' 
+                        ? 'bg-white text-blue-600 shadow-sm' 
+                        : 'text-slate-500 hover:text-slate-800'
+                    }`}
+                  >
+                    🛡️ Full Access
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('branch')}
+                    className={`py-1.5 px-2 text-xs font-bold rounded-lg flex-1 text-center transition-all cursor-pointer ${
+                      activeTab === 'branch' 
+                        ? 'bg-white text-indigo-600 shadow-sm' 
+                        : 'text-slate-500 hover:text-slate-800'
+                    }`}
+                  >
+                    🏛️ HODs
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('student')}
+                    className={`py-1.5 px-2 text-xs font-bold rounded-lg flex-1 text-center transition-all cursor-pointer ${
+                      activeTab === 'student' 
+                        ? 'bg-white text-slate-700 shadow-sm' 
+                        : 'text-slate-500 hover:text-slate-800'
+                    }`}
+                  >
+                    🎓 Student
+                  </button>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
-                    Demo Email
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    className="block w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow"
-                    value={demoEmail}
-                    onChange={(e) => setDemoEmail(e.target.value)}
-                    placeholder="user@hitam.org"
-                  />
+                {/* Tab Contents: List of quick-select cards */}
+                <div className="grid grid-cols-1 gap-2 max-h-[180px] overflow-y-auto pr-1">
+                  {demoAccounts[activeTab].map((acc) => (
+                    <button
+                      key={acc.email}
+                      type="button"
+                      onClick={() => {
+                        setDemoEmail(acc.email);
+                        handleLoginResponse(acc.email, acc.name, '');
+                      }}
+                      className="group flex flex-col text-left p-2.5 border border-slate-100 hover:border-blue-200 hover:bg-blue-50/20 rounded-xl transition-all duration-200 hover:-translate-y-0.5 cursor-pointer"
+                    >
+                      <div className="flex items-center justify-between w-full">
+                        <span className="text-xs font-bold text-slate-800 group-hover:text-blue-600 transition-colors">
+                          {acc.name}
+                        </span>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded font-black tracking-wide uppercase ${
+                          activeTab === 'full' 
+                            ? 'bg-red-50 text-red-600' 
+                            : activeTab === 'branch' 
+                              ? 'bg-indigo-50 text-indigo-600' 
+                              : 'bg-slate-100 text-slate-600'
+                        }`}>
+                          {acc.desc}
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-slate-400 mt-1 block">
+                        {acc.email}
+                      </span>
+                    </button>
+                  ))}
                 </div>
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full py-2 px-4 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-bold text-sm rounded-lg transition-colors flex items-center justify-center gap-2 cursor-pointer"
-                >
-                  Log In with Demo Account
-                </button>
-              </form>
+
+                <div className="relative flex py-2 items-center">
+                  <div className="flex-grow border-t border-slate-100"></div>
+                  <span className="flex-shrink mx-3 text-slate-400 text-[10px] font-bold uppercase tracking-wider">or enter custom email</span>
+                  <div className="flex-grow border-t border-slate-100"></div>
+                </div>
+
+                <form onSubmit={handleDemoSubmit} className="space-y-3">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
+                      Custom Email Address
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      className="block w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow"
+                      value={demoEmail}
+                      onChange={(e) => setDemoEmail(e.target.value)}
+                      placeholder="user@hitam.org"
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full py-2 px-4 bg-slate-800 hover:bg-slate-900 disabled:bg-slate-400 text-white font-bold text-xs rounded-lg transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-sm"
+                  >
+                    Log In with Custom Account
+                  </button>
+                </form>
+              </div>
             )}
 
           </div>
