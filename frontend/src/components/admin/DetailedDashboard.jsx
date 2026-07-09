@@ -8,7 +8,7 @@ import {
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
-const DetailedDashboard = ({ user, selectedBranch, onSelectStudent }) => {
+const DetailedDashboard = ({ user, selectedBranch, selectedBatch, selectedYear, onSelectStudent }) => {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -17,7 +17,7 @@ const DetailedDashboard = ({ user, selectedBranch, onSelectStudent }) => {
 
   useEffect(() => {
     fetchDetailedAnalytics();
-  }, [selectedBranch]);
+  }, [selectedBranch, selectedBatch, selectedYear]);
 
   const fetchDetailedAnalytics = async () => {
     setLoading(true);
@@ -25,7 +25,7 @@ const DetailedDashboard = ({ user, selectedBranch, onSelectStudent }) => {
     try {
       const token = user?.email || '';
       const headers = { Authorization: `Bearer ${token}` };
-      const res = await axios.get(`${API_URL}/api/admin/detailed-analytics?branch=${selectedBranch}`, { headers });
+      const res = await axios.get(`${API_URL}/api/admin/detailed-analytics?branch=${selectedBranch}&batch_year=${selectedBatch}&academic_year=${selectedYear}`, { headers });
       setData(res.data);
     } catch (err) {
       console.error('Failed to fetch detailed analytics:', err);

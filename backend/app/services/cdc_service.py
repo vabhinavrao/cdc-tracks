@@ -155,9 +155,10 @@ def seed_cdc_performance_data(db: Session):
     
     db.commit()
 
-def get_cdc_performance_by_roll(db: Session, roll_number: str, email: str = None):
+def get_cdc_performance_by_roll(db: Session, roll_number: str, email: str = None, academic_year: int = None):
     """
     Retrieves CDC performance record for a given roll number or email case-insensitively.
+    If academic_year is provided, returns that specific year, otherwise returns the latest year available.
     """
     if not roll_number and not email:
         return None
@@ -165,14 +166,23 @@ def get_cdc_performance_by_roll(db: Session, roll_number: str, email: str = None
     clean_roll = (roll_number or "").strip().upper()
     clean_email = (email or "").strip().lower()
 
-    # 1. Try matching by clean roll number
-    record = db.query(CDCPerformance).filter(func.upper(CDCPerformance.roll_number) == clean_roll).first()
-    
-    # 2. Try matching by clean email
-    if not record and clean_email:
-        record = db.query(CDCPerformance).filter(func.lower(CDCPerformance.email) == clean_email).first()
+    # Import func if needed
+    from sqlalchemy import func
 
-    return record
+    query = db.query(CDCPerformance)
+    if clean_roll:
+        query = query.filter(func.upper(CDCPerformance.roll_number) == clean_roll)
+    elif clean_email:
+        query = query.filter(func.lower(CDCPerformance.email) == clean_email)
+    else:
+        return None
+
+    if academic_year is not None:
+        query = query.filter(CDCPerformance.academic_year == academic_year)
+    else:
+        query = query.order_by(CDCPerformance.academic_year.desc())
+
+    return query.first()
 
 
 def calculate_ranks(db: Session, student_record: CDCPerformance):
@@ -188,10 +198,12 @@ def calculate_ranks(db: Session, student_record: CDCPerformance):
         }
 
     batch_students = db.query(CDCPerformance).filter(
-        CDCPerformance.batch_year == student_record.batch_year
+        CDCPerformance.batch_year == student_record.batch_year,
+        CDCPerformance.academic_year == student_record.academic_year
     ).count()
     branch_students = db.query(CDCPerformance).filter(
         CDCPerformance.batch_year == student_record.batch_year,
+        CDCPerformance.academic_year == student_record.academic_year,
         func.upper(CDCPerformance.branch) == func.upper(student_record.branch)
     ).count()
 
@@ -205,11 +217,13 @@ def calculate_ranks(db: Session, student_record: CDCPerformance):
 
     batch_rank = db.query(CDCPerformance).filter(
         CDCPerformance.batch_year == student_record.batch_year,
+        CDCPerformance.academic_year == student_record.academic_year,
         CDCPerformance.cdc_rank < student_record.cdc_rank
     ).count() + 1
 
     branch_rank = db.query(CDCPerformance).filter(
         CDCPerformance.batch_year == student_record.batch_year,
+        CDCPerformance.academic_year == student_record.academic_year,
         func.upper(CDCPerformance.branch) == func.upper(student_record.branch),
         CDCPerformance.cdc_rank < student_record.cdc_rank
     ).count() + 1
@@ -222,22 +236,29 @@ def calculate_ranks(db: Session, student_record: CDCPerformance):
     }
 
 
-def get_branch_ranks_map(db: Session):
+def get_branch_ranks_map(db: Session, batch_year: str = None, academic_year: int = None):
     """
     Computes absolute branch ranks for all students in the database.
-    Returns a dictionary mapping roll_number to its branch rank.
+    Returns a dictionary mapping (roll_number, academic_year) to its branch rank.
     """
-    all_records = db.query(
+    query = db.query(
         CDCPerformance.roll_number,
         CDCPerformance.branch,
         CDCPerformance.batch_year,
+        CDCPerformance.academic_year,
         CDCPerformance.cdc_rank
-    ).all()
+    )
+    if batch_year and batch_year.upper() != "ALL":
+        query = query.filter(CDCPerformance.batch_year == batch_year)
+    if academic_year is not None:
+        query = query.filter(CDCPerformance.academic_year == academic_year)
+        
+    all_records = query.all()
 
-    # Group by (batch_year, branch)
+    # Group by (batch_year, academic_year, branch)
     by_group = {}
-    for roll, branch, batch, rank in all_records:
-        key = (batch, (branch or "").upper())
+    for roll, branch, batch, acad_yr, rank in all_records:
+        key = (batch, acad_yr, (branch or "").upper())
         if key not in by_group:
             by_group[key] = []
         by_group[key].append((roll, rank))
@@ -247,8 +268,31 @@ def get_branch_ranks_map(db: Session):
     for key, members in by_group.items():
         members.sort(key=lambda x: x[1] if x[1] is not None else 999999)
         for idx, (roll, rank) in enumerate(members):
-            branch_ranks[roll] = idx + 1
+            branch_ranks[(roll, key[1])] = idx + 1
 
     return branch_ranks
+
+def get_test_mappings(db: Session, batch_year: str, academic_year: int) -> dict:
+    """
+    Retrieves the test name mappings from the overall marks sheet connection.
+    """
+    from app.models import GoogleSheetConnection
+    connection = db.query(GoogleSheetConnection).filter(
+        GoogleSheetConnection.batch_year == batch_year,
+        GoogleSheetConnection.academic_year == academic_year,
+        GoogleSheetConnection.sheet_type == "overall_marks"
+    ).first()
+    
+    if connection and connection.test_mappings:
+        return connection.test_mappings
+        
+    # Fallback to any connection's test_mappings if specific is not found
+    fallback = db.query(GoogleSheetConnection).filter(
+        GoogleSheetConnection.sheet_type == "overall_marks"
+    ).first()
+    if fallback and fallback.test_mappings:
+        return fallback.test_mappings
+        
+    return {}
 
 

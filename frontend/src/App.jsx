@@ -9,6 +9,7 @@ import Dashboard from './pages/Dashboard';
 import CDCDashboard from './pages/CDCDashboard';
 import AdminDashboard from './pages/AdminDashboard';
 import MultiStackProjects from './pages/MultiStackProjects';
+import Internships from './pages/Internships';
 
 // A beautifully styled profile card for the Profile route
 const Profile = ({ user, onLogout }) => {
@@ -128,6 +129,12 @@ function App() {
                 user ? (isAdmin ? <Navigate to="/admin-dashboard" replace /> : <Dashboard user={user} />) : <Navigate to="/login" replace />
               } 
             />
+            {/* <Route 
+              path="/internships" 
+              element={
+                user ? <Internships user={user} /> : <Navigate to="/login" replace />
+              } 
+            /> */}
             <Route 
               path="/cdc-dashboard" 
               element={user ? <CDCDashboard user={user} /> : <Navigate to="/login" replace />} 

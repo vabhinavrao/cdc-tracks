@@ -5,13 +5,25 @@ import axios from 'axios';
 import { 
   Users, Award, BookOpen, Search, Filter, RefreshCw, 
   ChevronRight, ChevronLeft, X, User, CheckCircle2, AlertCircle, TrendingUp, ShieldCheck, Building2,
-  Target, Layers, BarChart3, Mail, CheckCircle, AlertTriangle, LayoutDashboard, LineChart
+  Target, Layers, BarChart3, Mail, CheckCircle, AlertTriangle, LayoutDashboard, LineChart, FileSpreadsheet, Calendar
 } from 'lucide-react';
 import DetailedDashboard from '../components/admin/DetailedDashboard';
 import TrackBatchControlPanel from '../components/admin/TrackBatchControlPanel';
 import ProjectManagementAdmin from '../components/admin/ProjectManagementAdmin';
+import GoogleSheetsSetup from '../components/admin/GoogleSheetsSetup';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
+const shortenTestName = (name) => {
+  if (!name) return "";
+  return name
+    .replace(/Quantitative Aptitude/gi, "QA")
+    .replace(/Logical Reasoning/gi, "LR")
+    .replace(/Post As+es+ment/gi, "PA")
+    .replace(/Post Assess\./gi, "PA")
+    .replace(/\s+/g, " ")
+    .trim();
+};
 
 const AdminDashboard = ({ user }) => {
   const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'detailed' | 'control'
@@ -19,6 +31,9 @@ const AdminDashboard = ({ user }) => {
   const [analytics, setAnalytics] = useState(null);
   const [students, setStudents] = useState([]);
   const [selectedBranch, setSelectedBranch] = useState('ALL');
+  const [selectedBatch, setSelectedBatch] = useState('ALL');
+  const [selectedYear, setSelectedYear] = useState('ALL');
+  const [availableBatches, setAvailableBatches] = useState([]);
   const [selectedBand, setSelectedBand] = useState('ALL');
   const [sortBy, setSortBy] = useState('rank');
   const [searchQuery, setSearchQuery] = useState('');
@@ -64,7 +79,7 @@ const AdminDashboard = ({ user }) => {
       setCurrentPage(1);
     }, 250);
     return () => clearTimeout(timer);
-  }, [selectedBranch, selectedBand, sortBy, searchQuery]);
+  }, [selectedBranch, selectedBand, sortBy, searchQuery, selectedBatch, selectedYear]);
 
   const fetchDashboardData = async () => {
     setLoading(true);
@@ -73,11 +88,14 @@ const AdminDashboard = ({ user }) => {
       const headers = { Authorization: `Bearer ${token}` };
 
       // 1. Fetch analytics
-      const analyticsRes = await axios.get(`${API_URL}/api/admin/analytics?branch=${selectedBranch}`, { headers });
+      const analyticsRes = await axios.get(`${API_URL}/api/admin/analytics?branch=${selectedBranch}&batch_year=${selectedBatch}&academic_year=${selectedYear}`, { headers });
       setAnalytics(analyticsRes.data);
+      if (analyticsRes.data.available_batches) {
+        setAvailableBatches(analyticsRes.data.available_batches);
+      }
 
       // 2. Fetch student list
-      fetchStudentsList(selectedBranch, searchQuery, selectedBand, sortBy);
+      fetchStudentsList(selectedBranch, selectedBatch, selectedYear, searchQuery, selectedBand, sortBy);
     } catch (err) {
       console.error('Failed to fetch admin data:', err);
     } finally {
@@ -85,12 +103,12 @@ const AdminDashboard = ({ user }) => {
     }
   };
 
-  const fetchStudentsList = async (branchFilter, search, bandFilter, sortOrder) => {
+  const fetchStudentsList = async (branchFilter, batchFilter, yearFilter, search, bandFilter, sortOrder) => {
     try {
       const token = user?.email || '';
       const headers = { Authorization: `Bearer ${token}` };
       const res = await axios.get(
-        `${API_URL}/api/admin/students?branch=${branchFilter}&search=${encodeURIComponent(search || '')}&band=${bandFilter || 'ALL'}&sort_by=${sortOrder || 'rank'}`, 
+        `${API_URL}/api/admin/students?branch=${branchFilter}&batch_year=${batchFilter}&academic_year=${yearFilter}&search=${encodeURIComponent(search || '')}&band=${bandFilter || 'ALL'}&sort_by=${sortOrder || 'rank'}`, 
         { headers }
       );
       setStudents(res.data.students || []);
@@ -177,7 +195,7 @@ const AdminDashboard = ({ user }) => {
   const renderFullStudentView = () => {
     if (!studentDetail) return null;
 
-    const { student, overall, post_assessments, domain_tracks, test_scores, user_profile } = studentDetail;
+    const { student, overall, post_assessments, domain_tracks, test_scores, test_mappings, user_profile } = studentDetail;
     const rawScores = test_scores || {};
     const rawEntries = Object.entries(rawScores);
 
@@ -214,8 +232,12 @@ const AdminDashboard = ({ user }) => {
       const scoreVal = getScoreForTest(num, key);
       const isUnattempted = scoreVal === null || scoreVal === undefined || scoreVal === '';
 
+      const rawDisplayName = (test_mappings && (test_mappings[key] || test_mappings[`Test ${num}`])) || key;
+      const displayName = shortenTestName(rawDisplayName);
+
       return {
-        name: key,
+        name: displayName,
+        fullName: rawDisplayName,
         num,
         score: isUnattempted ? null : parseFloat(scoreVal),
         isUnattempted
@@ -360,11 +382,11 @@ const AdminDashboard = ({ user }) => {
               <div className="relative w-full h-48 pt-6 flex-1">
                 {/* Crisp Un-stretched Milestone Text Labels */}
                 <div className="absolute top-0 left-0 right-0 h-4 pointer-events-none z-10">
-                  <span className="absolute -translate-x-1/2 text-[10px] font-extrabold text-purple-600 tracking-tight whitespace-nowrap" style={{ left: `${(8 / 29) * 100}%` }}>
-                    Track Name I
+                  <span className="absolute -translate-x-1/2 text-[10px] font-extrabold text-purple-600 tracking-tight whitespace-nowrap" style={{ left: `${(8 / 29) * 100}%` }} title={domain_tracks?.["II-I"]?.domain}>
+                    {domain_tracks?.["II-I"]?.domain ? shortenTestName(domain_tracks["II-I"].domain) : "Track I"}
                   </span>
-                  <span className="absolute -translate-x-1/2 text-[10px] font-extrabold text-purple-600 tracking-tight whitespace-nowrap" style={{ left: `${(22 / 29) * 100}%` }}>
-                    Track Name II
+                  <span className="absolute -translate-x-1/2 text-[10px] font-extrabold text-purple-600 tracking-tight whitespace-nowrap" style={{ left: `${(22 / 29) * 100}%` }} title={domain_tracks?.["II-II"]?.domain}>
+                    {domain_tracks?.["II-II"]?.domain ? shortenTestName(domain_tracks["II-II"].domain) : "Track II"}
                   </span>
                 </div>
 
@@ -606,12 +628,27 @@ const AdminDashboard = ({ user }) => {
               <Target size={14} className="text-emerald-600" /> Track Name Performance
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {Object.entries(post_assessments || {}).map(([title, score]) => (
-                <div key={title} className="bg-slate-900 text-white p-4 rounded-2xl flex flex-col justify-between">
-                  <span className="text-[10px] font-bold uppercase text-emerald-400">{title.replace(/Post Assessment/i, "Track Name")}</span>
-                  <span className="text-2xl font-black mt-2">{score}%</span>
-                </div>
-              ))}
+              {Object.entries(post_assessments || {}).map(([title, score]) => {
+                const isSem2_2 = title.includes("II-II") || title.includes("2-2");
+                const isSem2_1 = !isSem2_2 && (title.includes("II-I") || title.includes("2-1"));
+                
+                let semKey = "";
+                if (isSem2_2) semKey = "II-II";
+                else if (isSem2_1) semKey = "II-I";
+                
+                const trackName = semKey && domain_tracks?.[semKey]?.domain ? domain_tracks[semKey].domain : title.replace(/Post Assessment/i, "Track Name");
+                const semesterLabel = semKey ? `Sem ${semKey}` : "";
+
+                return (
+                  <div key={title} className="bg-slate-900 text-white p-4 rounded-2xl flex flex-col justify-between" title={trackName}>
+                    <span className="text-[10px] font-bold uppercase text-emerald-400">
+                      {semesterLabel ? `${semesterLabel} Track` : "Track Name"}
+                    </span>
+                    <span className="text-xs font-bold truncate mt-1">{shortenTestName(trackName)}</span>
+                    <span className="text-2xl font-black mt-2">{score}%</span>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
@@ -623,13 +660,20 @@ const AdminDashboard = ({ user }) => {
           </h3>
           <div className="grid grid-cols-2 sm:grid-cols-5 md:grid-cols-6 gap-2">
             {testList.map((t) => (
-              <div key={t.name} className="p-2 bg-white rounded-xl border border-slate-200 text-center text-xs">
+              <div key={t.name} className="p-2 bg-white rounded-xl border border-slate-200 text-center text-xs" title={t.fullName}>
                 <div className="text-[10px] font-bold text-slate-500 truncate">{t.name}</div>
                 <div className={`font-black mt-0.5 ${t.isUnattempted ? 'text-slate-300' : t.score >= 80 ? 'text-emerald-600' : 'text-blue-600'}`}>
                   {t.isUnattempted ? '-' : `${t.score}%`}
                 </div>
               </div>
             ))}
+          </div>
+          
+          <div className="pt-3 border-t border-slate-200/60 flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+            <span className="text-emerald-600 font-extrabold">ABBREVIATIONS:</span>
+            <span>QA: Quantitative Aptitude</span>
+            <span>LR: Logical Reasoning</span>
+            <span>PA: Post Assessment</span>
           </div>
         </div>
 
@@ -723,6 +767,18 @@ const AdminDashboard = ({ user }) => {
           <Layers size={16} />
           <span>Track & Batch Control</span>
         </button>
+
+        <button
+          onClick={() => setActiveTab('sheets')}
+          className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl text-xs font-bold transition-all cursor-pointer ${
+            activeTab === 'sheets'
+              ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
+              : 'bg-white hover:bg-slate-100 text-slate-600 border border-slate-200'
+          }`}
+        >
+          <FileSpreadsheet size={16} />
+          <span>Google Sheets Sync</span>
+        </button>
       </div>
 
       {activeTab === 'projects' ? (
@@ -733,38 +789,82 @@ const AdminDashboard = ({ user }) => {
         <DetailedDashboard 
           user={user} 
           selectedBranch={selectedBranch} 
+          selectedBatch={selectedBatch} 
+          selectedYear={selectedYear} 
           onSelectStudent={openStudentModal} 
         />
+      ) : activeTab === 'sheets' ? (
+        <GoogleSheetsSetup user={user} />
       ) : (
         <div className="space-y-8">
 
       {/* Controls Bar & Sync */}
       <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-center gap-2 overflow-x-auto pb-2 md:pb-0">
-          <span className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1 shrink-0 mr-2">
-            <Building2 size={16} />
-            Branch:
-          </span>
-          {isSuperAdmin ? (
-            ['ALL', 'CSE', 'CSM', 'CSD', 'ECE', 'EEE', 'MECH'].map((b) => (
-              <button
-                key={b}
-                onClick={() => setSelectedBranch(b)}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer ${
-                  selectedBranch === b
-                    ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
-                    : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
-                }`}
+        <div className="flex flex-wrap items-center gap-6">
+          
+          {/* Branch Dropdown */}
+          <div className="flex flex-col gap-1.5 min-w-[140px]">
+            <label className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+              <Building2 size={14} className="text-slate-400" />
+              Branch
+            </label>
+            {isSuperAdmin ? (
+              <select
+                value={selectedBranch}
+                onChange={(e) => setSelectedBranch(e.target.value)}
+                className="bg-slate-50 border border-slate-200 text-slate-700 text-sm font-semibold rounded-xl px-3 py-2 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all min-w-[150px]"
               >
-                {b === 'ALL' ? 'All Branches' : b}
-              </button>
-            ))
-          ) : (
+                {['ALL', 'CSE', 'CSM', 'CSD', 'ECE', 'EEE', 'MECH'].map((b) => (
+                  <option key={b} value={b}>
+                    {b === 'ALL' ? 'All Branches' : b}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <div className="px-3.5 py-2 bg-blue-50 text-blue-700 font-extrabold text-xs rounded-xl border border-blue-200">
+                {user?.assigned_branch} Branch Only
+              </div>
+            )}
+          </div>
 
-            <div className="px-4 py-2 bg-blue-50 text-blue-700 font-extrabold text-xs rounded-xl border border-blue-200">
-              {user?.assigned_branch} Branch Only
-            </div>
-          )}
+          {/* Batch Dropdown */}
+          <div className="flex flex-col gap-1.5 min-w-[140px]">
+            <label className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+              <Layers size={14} className="text-slate-400" />
+              Batch
+            </label>
+            <select
+              value={selectedBatch}
+              onChange={(e) => setSelectedBatch(e.target.value)}
+              className="bg-slate-50 border border-slate-200 text-slate-700 text-sm font-semibold rounded-xl px-3 py-2 cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all min-w-[150px]"
+            >
+              <option value="ALL">All Batches</option>
+              {availableBatches.map((b) => (
+                <option key={b} value={b}>
+                  Batch {b}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Year Dropdown */}
+          <div className="flex flex-col gap-1.5 min-w-[140px]">
+            <label className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+              <Calendar size={14} className="text-slate-400" />
+              Academic Year
+            </label>
+            <select
+              value={selectedYear}
+              onChange={(e) => setSelectedYear(e.target.value)}
+              className="bg-slate-50 border border-slate-200 text-slate-700 text-sm font-semibold rounded-xl px-3 py-2 cursor-pointer focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 transition-all min-w-[150px]"
+            >
+              <option value="ALL">All Years</option>
+              <option value="1">1st Year</option>
+              <option value="2">2nd Year</option>
+              <option value="3">3rd Year</option>
+              <option value="4">4th Year</option>
+            </select>
+          </div>
         </div>
 
         <div className="flex items-center gap-3">

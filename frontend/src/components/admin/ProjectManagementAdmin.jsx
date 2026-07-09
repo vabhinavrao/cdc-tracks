@@ -4,13 +4,13 @@ import { createPortal } from 'react-dom';
 import axios from 'axios';
 import { 
   Building2, BookOpen, Search, Filter, Phone, CheckCircle2, AlertCircle, 
-  Clock, User, Check, X, FileText, Sparkles, UserCheck, ChevronRight
+  Clock, User, Check, X, FileText, Sparkles, UserCheck, ChevronRight, Briefcase, ExternalLink
 } from 'lucide-react';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 const ProjectManagementAdmin = ({ user }) => {
-  const [subTab, setSubTab] = useState('selections'); // 'selections' | 'hitam_requests'
+  const [subTab, setSubTab] = useState('selections'); // 'selections' | 'hitam_requests' | 'internship_requests'
   
   // Track selections state
   const [selections, setSelections] = useState([]);
@@ -22,7 +22,14 @@ const ProjectManagementAdmin = ({ user }) => {
   const [hitamRequests, setHitamRequests] = useState([]);
   const [loadingRequests, setLoadingRequests] = useState(true);
   const [hitamStatusFilter, setHitamStatusFilter] = useState('ALL');
+
+  // Internship requests state
+  const [internshipRequests, setInternshipRequests] = useState([]);
+  const [loadingInternships, setLoadingInternships] = useState(true);
+  const [internshipStatusFilter, setInternshipStatusFilter] = useState('ALL');
+
   const [editingRequest, setEditingRequest] = useState(null);
+  const [editingRequestType, setEditingRequestType] = useState('hitam'); // 'hitam' | 'internship'
   const [newStatus, setNewStatus] = useState('contacted');
   const [adminNotes, setAdminNotes] = useState('');
   const [updating, setUpdating] = useState(false);
@@ -38,7 +45,8 @@ const ProjectManagementAdmin = ({ user }) => {
   useEffect(() => {
     fetchSelections();
     fetchHitamRequests();
-  }, [selectedBranch, hitamStatusFilter, searchQuery]);
+    fetchInternshipRequests();
+  }, [selectedBranch, hitamStatusFilter, internshipStatusFilter, searchQuery]);
 
   const fetchSelections = async () => {
     setLoadingSelections(true);
@@ -70,8 +78,24 @@ const ProjectManagementAdmin = ({ user }) => {
     }
   };
 
-  const handleOpenEditModal = (req) => {
+  const fetchInternshipRequests = async () => {
+    setLoadingInternships(true);
+    try {
+      const token = user?.email || '';
+      const res = await axios.get(`${API_URL}/api/admin/internship-requests?branch=${selectedBranch}&status_filter=${internshipStatusFilter}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setInternshipRequests(res.data.requests || []);
+    } catch (err) {
+      console.error("Failed to fetch internship requests", err);
+    } finally {
+      setLoadingInternships(false);
+    }
+  };
+
+  const handleOpenEditModal = (req, type) => {
     setEditingRequest(req);
+    setEditingRequestType(type || 'hitam');
     setNewStatus(req.status || 'contacted');
     setAdminNotes(req.admin_notes || '');
   };
@@ -83,7 +107,11 @@ const ProjectManagementAdmin = ({ user }) => {
     setUpdating(true);
     try {
       const token = user?.email || '';
-      await axios.patch(`${API_URL}/api/admin/hitam-requests/${editingRequest.id}`, {
+      const endpoint = editingRequestType === 'internship'
+        ? `${API_URL}/api/admin/internship-requests/${editingRequest.id}`
+        : `${API_URL}/api/admin/hitam-requests/${editingRequest.id}`;
+
+      await axios.patch(endpoint, {
         status: newStatus,
         admin_notes: adminNotes
       }, {
@@ -91,7 +119,11 @@ const ProjectManagementAdmin = ({ user }) => {
       });
 
       setEditingRequest(null);
-      fetchHitamRequests();
+      if (editingRequestType === 'internship') {
+        fetchInternshipRequests();
+      } else {
+        fetchHitamRequests();
+      }
     } catch (err) {
       alert(err.response?.data?.detail || "Failed to update status");
     } finally {
@@ -159,6 +191,16 @@ const ProjectManagementAdmin = ({ user }) => {
           <Sparkles size={16} className="text-amber-400" />
           <span>Multi-Stack Project Requests</span>
         </button>
+
+        {/* <button
+          onClick={() => setSubTab('internship_requests')}
+          className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl text-xs font-extrabold transition-all cursor-pointer ${
+            subTab === 'internship_requests' ? 'bg-slate-900 text-white shadow-md' : 'bg-white hover:bg-slate-100 text-slate-600 border border-slate-200'
+          }`}
+        >
+          <Briefcase size={16} className="text-indigo-400" />
+          <span>Internship Requests</span>
+        </button> */}
       </div>
 
       {/* TAB 1: TRACK PROJECT SELECTIONS */}
@@ -300,7 +342,106 @@ const ProjectManagementAdmin = ({ user }) => {
 
                   <div className="pt-2">
                     <button
-                      onClick={() => handleOpenModal(req)}
+                      onClick={() => handleOpenEditModal(req, 'hitam')}
+                      className="w-full py-2 bg-white hover:bg-slate-100 text-slate-800 font-bold text-xs rounded-xl border border-slate-200 transition-all cursor-pointer shadow-sm"
+                    >
+                      Review & Update Application Status
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB 3: INTERNSHIP REQUESTS MANAGEMENT */}
+      {subTab === 'internship_requests' && (
+        <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-4 pb-2">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Filter Status:</span>
+              {['ALL', 'pending', 'contacted', 'approved', 'rejected'].map((st) => (
+                <button
+                  key={st}
+                  onClick={() => setInternshipStatusFilter(st)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-extrabold capitalize transition-all cursor-pointer ${
+                    internshipStatusFilter === st ? 'bg-indigo-600 text-white' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+                  }`}
+                >
+                  {st}
+                </button>
+              ))}
+            </div>
+            <div className="text-xs text-slate-500 font-semibold">
+              Total Internship Applications: <span className="font-extrabold text-slate-900">{internshipRequests.length}</span>
+            </div>
+          </div>
+
+          {loadingInternships ? (
+            <div className="py-12 text-center text-slate-400 font-medium">Loading internship requests...</div>
+          ) : internshipRequests.length === 0 ? (
+            <div className="py-12 text-center text-slate-400 font-bold bg-slate-50 rounded-2xl">
+              No internship requests found matching this filter.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {internshipRequests.map((req) => (
+                <div key={req.id} className="p-5 rounded-2xl border border-slate-200 bg-slate-50/50 flex flex-col justify-between space-y-3">
+                  <div className="space-y-2 text-left">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h4 className="font-extrabold text-slate-900 text-base">{req.student_name || req.roll_number}</h4>
+                        <div className="text-xs text-slate-500 font-medium flex items-center gap-2 mt-0.5">
+                          <span>{req.roll_number}</span> • <span className="font-bold text-indigo-600">{req.branch}</span>
+                        </div>
+                      </div>
+                      <span className={`px-3 py-1 rounded-full text-xs font-black capitalize ${
+                        req.status === 'approved' ? 'bg-emerald-100 text-emerald-800' :
+                        req.status === 'contacted' ? 'bg-blue-100 text-blue-800' :
+                        req.status === 'rejected' ? 'bg-rose-100 text-rose-800' : 'bg-amber-100 text-amber-800'
+                      }`}>
+                        {req.status}
+                      </span>
+                    </div>
+
+                    <div className="bg-white p-3 rounded-xl border border-slate-200 text-xs space-y-2">
+                      <div className="flex justify-between">
+                        <span className="text-slate-400 font-semibold">Company:</span>
+                        <span className="font-extrabold text-slate-800">{req.company_name}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400 font-semibold">Role & Mode:</span>
+                        <span className="font-bold text-slate-850">{req.internship_domain} ({req.internship_mode})</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400 font-semibold">Duration:</span>
+                        <span className="font-semibold text-slate-700">{req.total_duration || 'N/A'}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400 font-semibold">Stipend:</span>
+                        <span className="font-semibold text-slate-750">{req.stipend || 'N/A'}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs pt-1">
+                      <div className="flex items-center gap-1.5 font-bold text-slate-700">
+                        <Phone size={14} className="text-emerald-600" />
+                        <a href={`tel:${req.phone_number}`} className="hover:underline">{req.phone_number}</a>
+                      </div>
+                      <span className="text-slate-400 font-medium">{req.requested_at ? new Date(req.requested_at).toLocaleDateString() : ''}</span>
+                    </div>
+
+                    {req.admin_notes && (
+                      <div className="p-2.5 bg-amber-50 rounded-xl border border-amber-200 text-[11px] text-amber-900 text-left">
+                        <span className="font-bold">Admin Note:</span> {req.admin_notes}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="pt-2">
+                    <button
+                      onClick={() => handleOpenEditModal(req, 'internship')}
                       className="w-full py-2 bg-white hover:bg-slate-100 text-slate-800 font-bold text-xs rounded-xl border border-slate-200 transition-all cursor-pointer shadow-sm"
                     >
                       Review & Update Application Status
@@ -318,7 +459,9 @@ const ProjectManagementAdmin = ({ user }) => {
         <div className="fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
           <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 relative text-left">
             <div className="flex justify-between items-center pb-3 border-b border-slate-100">
-              <h3 className="text-base font-extrabold text-slate-900">Review Multi-Stack Request</h3>
+              <h3 className="text-base font-extrabold text-slate-900">
+                {editingRequestType === 'internship' ? 'Review Internship Request' : 'Review Multi-Stack Request'}
+              </h3>
               <button onClick={() => setEditingRequest(null)} className="text-slate-400 hover:text-slate-600 text-lg font-bold">✕</button>
             </div>
 
@@ -328,6 +471,105 @@ const ProjectManagementAdmin = ({ user }) => {
                 <div className="font-extrabold text-slate-900 text-sm">{editingRequest.student_name} ({editingRequest.roll_number})</div>
                 <div className="text-xs text-indigo-600 font-bold">{editingRequest.branch} Branch</div>
               </div>
+
+              {editingRequestType === 'internship' ? (
+                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3 text-xs max-h-60 overflow-y-auto">
+                  <div className="font-bold text-slate-950 border-b border-slate-200 pb-1 uppercase tracking-wider text-[10px] text-left">Internship Information</div>
+                  <div className="grid grid-cols-2 gap-2 text-slate-700 text-left">
+                    <div>
+                      <span className="text-slate-400 block font-semibold">Company:</span>
+                      <span className="font-extrabold text-slate-800 flex items-center gap-1">
+                        {editingRequest.company_name}
+                        {editingRequest.company_website && (
+                          <a href={editingRequest.company_website} target="_blank" rel="noopener noreferrer" className="text-indigo-600 inline-flex items-center"><ExternalLink size={12} /></a>
+                        )}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block font-semibold">Domain / Role:</span>
+                      <span className="font-extrabold text-slate-800">{editingRequest.internship_domain}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block font-semibold">Obtained Through:</span>
+                      <span className="font-extrabold text-slate-800">{editingRequest.internship_obtained_through || 'N/A'}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block font-semibold">Mode:</span>
+                      <span className="font-extrabold text-slate-800">{editingRequest.internship_mode}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block font-semibold">Duration:</span>
+                      <span className="font-extrabold text-slate-800">{editingRequest.total_duration || 'N/A'}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block font-semibold">Dates:</span>
+                      <span className="font-extrabold text-slate-800 text-[10px]">
+                        {editingRequest.start_date || 'N/A'} to {editingRequest.end_date || 'N/A'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block font-semibold">Location:</span>
+                      <span className="font-extrabold text-slate-800">{editingRequest.internship_location || 'N/A'}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block font-semibold">Stipend:</span>
+                      <span className="font-extrabold text-slate-800">{editingRequest.stipend || 'N/A'}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block font-semibold">PPO Offered:</span>
+                      <span className="font-extrabold text-slate-800">{editingRequest.ppo_offered || 'No'}</span>
+                    </div>
+                    {editingRequest.expected_ctc && (
+                      <div>
+                        <span className="text-slate-400 block font-semibold">Expected CTC:</span>
+                        <span className="font-extrabold text-slate-800">{editingRequest.expected_ctc}</span>
+                      </div>
+                    )}
+                    <div>
+                      <span className="text-slate-400 block font-semibold">Student Section:</span>
+                      <span className="font-extrabold text-slate-800">{editingRequest.section || 'N/A'}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block font-semibold">Student Contact:</span>
+                      <span className="font-extrabold text-slate-800">{editingRequest.phone_number}</span>
+                    </div>
+                  </div>
+
+                  <div className="font-bold text-slate-950 border-b border-slate-200 pb-1 pt-1 uppercase tracking-wider text-[10px] text-left">SPOC Details</div>
+                  <div className="grid grid-cols-2 gap-2 text-slate-700 text-left">
+                    <div>
+                      <span className="text-slate-400 block font-semibold">Name:</span>
+                      <span className="font-extrabold text-slate-800">{editingRequest.spoc_name || 'N/A'}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block font-semibold">Designation:</span>
+                      <span className="font-extrabold text-slate-800">{editingRequest.spoc_designation || 'N/A'}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block font-semibold">Email:</span>
+                      <span className="font-extrabold text-slate-800">{editingRequest.spoc_email || 'N/A'}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block font-semibold">Phone:</span>
+                      <span className="font-extrabold text-slate-800">{editingRequest.spoc_phone || 'N/A'}</span>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-2 text-xs text-slate-700 text-left">
+                  <div>
+                    <span className="text-slate-400 block font-semibold">Requested Project:</span>
+                    <span className="font-extrabold text-slate-900">
+                      <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 font-extrabold text-[10px] rounded mr-1.5">{editingRequest.project_code}</span>
+                      {editingRequest.project_title}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block font-semibold mb-1">Reason:</span>
+                    <p className="italic text-slate-600 leading-relaxed font-medium">"{editingRequest.reason}"</p>
+                  </div>
+                </div>
+              )}
 
               <div>
                 <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-1.5">Application Status</label>

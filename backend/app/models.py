@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, JSON, Float, DateTime, Boolean
+from sqlalchemy import Column, Integer, String, JSON, Float, DateTime, Boolean, UniqueConstraint
 from datetime import datetime
 from app.database import Base
 
@@ -33,9 +33,14 @@ class CDCPerformance(Base):
     __tablename__ = "cdc_performance"
 
     id = Column(Integer, primary_key=True, index=True)
-    roll_number = Column(String, unique=True, index=True, nullable=False)
+    roll_number = Column(String, index=True, nullable=False)
     batch_year = Column(String, default="2024-2028", nullable=False)
+    academic_year = Column(Integer, default=1, nullable=False)
     name = Column(String, nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint('roll_number', 'academic_year', name='uq_roll_number_academic_year'),
+    )
     branch = Column(String, nullable=True)
     email = Column(String, nullable=True)
     mobile = Column(String, nullable=True)
@@ -150,6 +155,63 @@ class HitamProjectRequest(Base):
     status = Column(String, default="pending", nullable=False) # pending, contacted, approved, rejected
     admin_notes = Column(String, nullable=True)
     requested_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class InternshipRequest(Base):
+    __tablename__ = "internship_requests"
+
+    id = Column(Integer, primary_key=True, index=True)
+    roll_number = Column(String, index=True, nullable=False)
+    student_name = Column(String, nullable=True)
+    student_email = Column(String, nullable=True)
+    branch = Column(String, nullable=True)
+    phone_number = Column(String, nullable=False)
+    
+    # Section B: Internship Details
+    company_name = Column(String, nullable=False)
+    company_website = Column(String, nullable=True)
+    internship_obtained_through = Column(String, nullable=True)
+    internship_domain = Column(String, nullable=True)
+    internship_mode = Column(String, nullable=True) # Online, Offline, Hybrid
+    start_date = Column(String, nullable=True)
+    end_date = Column(String, nullable=True)
+    total_duration = Column(String, nullable=True) # e.g. "3 months"
+    internship_location = Column(String, nullable=True)
+    stipend = Column(String, nullable=True)
+    ppo_offered = Column(String, nullable=True) # Yes/No
+    expected_ctc = Column(String, nullable=True)
+    
+    # Section C: Company SPOC Details
+    spoc_name = Column(String, nullable=True)
+    spoc_designation = Column(String, nullable=True)
+    spoc_email = Column(String, nullable=True)
+    spoc_phone = Column(String, nullable=True)
+    
+    # Section D: Student Section field
+    section = Column(String, nullable=True)
+    
+    # Approval Workflow
+    status = Column(String, default="pending", nullable=False) # pending, contacted, approved, rejected
+    admin_notes = Column(String, nullable=True)
+    requested_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class GoogleSheetConnection(Base):
+    __tablename__ = "google_sheet_connections"
+
+    id = Column(Integer, primary_key=True, index=True)
+    batch_year = Column(String, nullable=False) # e.g. "2024-2028"
+    academic_year = Column(Integer, nullable=False) # e.g. 1, 2, 3, 4
+    sheet_type = Column(String, nullable=False) # "overall_marks" or "domain_info"
+    sheet_url = Column(String, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    last_synced = Column(DateTime, nullable=True)
+    sync_status = Column(String, nullable=True) # "success", "failed", "syncing"
+    sync_message = Column(String, nullable=True)
+    test_mappings = Column(JSON, default=dict, nullable=True)
+
+
 
 
 

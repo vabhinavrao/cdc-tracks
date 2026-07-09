@@ -104,7 +104,9 @@ def get_auto_allocated_track_id(db, roll_number: str):
         return fin.track_id
         
     # 2. Check CDCPerformance domain_tracks
-    cdc = db.query(CDCPerformance).filter(func.upper(CDCPerformance.roll_number) == roll_clean).first()
+    cdc = db.query(CDCPerformance).filter(
+        func.upper(CDCPerformance.roll_number) == roll_clean
+    ).order_by(CDCPerformance.academic_year.desc()).first()
     if cdc and cdc.domain_tracks:
         for sem in ["III-I", "II-II", "II-I", "I-II"]:
             sem_info = cdc.domain_tracks.get(sem)

@@ -5,9 +5,10 @@ from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
 from app.database import get_db
-from app.models import User, Track, BatchSchedule, TrackSelectionHistory, FinalisedTrack, ProjectTopic, StudentProjectSelection, HitamProjectRequest
+from app.models import User, Track, BatchSchedule, TrackSelectionHistory, FinalisedTrack, ProjectTopic, StudentProjectSelection, HitamProjectRequest, CDCPerformance, InternshipRequest
 from app.utils import calculate_current_year, get_auto_allocated_track_id
-from app.services.cdc_service import get_cdc_performance_by_roll
+from app.services.cdc_service import get_cdc_performance_by_roll, get_test_mappings
+
 
 router = APIRouter(prefix="/api/student", tags=["Student Profile & Tracks"])
 
@@ -307,11 +308,16 @@ def get_dashboard_data(
 
 @router.get("/cdc-dashboard-data")
 def get_cdc_dashboard_data(
+    academic_year: Optional[int] = None,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    cdc_record = get_cdc_performance_by_roll(db, user.roll_number, user.email)
+    cdc_record = get_cdc_performance_by_roll(db, user.roll_number, user.email, academic_year=academic_year)
     
+    if not cdc_record:
+        # Fallback to latest year if specified year not found
+        cdc_record = get_cdc_performance_by_roll(db, user.roll_number, user.email)
+        
     if not cdc_record:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -320,6 +326,12 @@ def get_cdc_dashboard_data(
     
     from app.services.cdc_service import calculate_ranks
     ranks = calculate_ranks(db, cdc_record)
+
+    # Fetch all available academic years for this student
+    all_records = db.query(CDCPerformance.academic_year).filter(
+        CDCPerformance.roll_number == cdc_record.roll_number
+    ).distinct().all()
+    available_years = sorted([r[0] for r in all_records])
         
     return {
         "student": {
@@ -327,7 +339,8 @@ def get_cdc_dashboard_data(
             "roll_number": cdc_record.roll_number,
             "branch": cdc_record.branch or user.branch,
             "email": cdc_record.email or user.email,
-            "batch_year": cdc_record.batch_year
+            "batch_year": cdc_record.batch_year,
+            "academic_year": cdc_record.academic_year
         },
         "overall": {
             "cdc_band": cdc_record.cdc_band,
@@ -344,7 +357,9 @@ def get_cdc_dashboard_data(
         },
         "post_assessments": cdc_record.post_assessments,
         "domain_tracks": cdc_record.domain_tracks,
-        "test_scores": cdc_record.test_scores
+        "test_scores": cdc_record.test_scores,
+        "test_mappings": get_test_mappings(db, cdc_record.batch_year, cdc_record.academic_year),
+        "available_years": available_years
     }
 
 
@@ -524,6 +539,159 @@ def request_hitam_project(
 
     db.commit()
     return {"message": "HITAM project request submitted successfully! CDC team will review your application."}
+
+
+class InternshipRequestModel(BaseModel):
+    phone_number: str
+    company_name: str
+    company_website: Optional[str] = None
+    internship_obtained_through: Optional[str] = None
+    internship_domain: Optional[str] = None
+    internship_mode: Optional[str] = None
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    total_duration: Optional[str] = None
+    internship_location: Optional[str] = None
+    stipend: Optional[str] = None
+    ppo_offered: Optional[str] = None
+    expected_ctc: Optional[str] = None
+    spoc_name: Optional[str] = None
+    spoc_designation: Optional[str] = None
+    spoc_email: Optional[str] = None
+    spoc_phone: Optional[str] = None
+    section: Optional[str] = None
+
+
+@router.get("/internship-data")
+def get_student_internship_data(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    current_academic_year = calculate_current_year(user.joining_year)
+    
+    cdc_record = db.query(CDCPerformance).filter(
+        CDCPerformance.roll_number == user.roll_number
+    ).order_by(CDCPerformance.academic_year.desc()).first()
+    cdc_band = cdc_record.cdc_band if cdc_record else "Unassigned"
+    phone_number = cdc_record.mobile if cdc_record else ""
+    
+    existing_request = db.query(InternshipRequest).filter(InternshipRequest.roll_number == user.roll_number).first()
+    
+    request_data = None
+    if existing_request:
+        request_data = {
+            "id": existing_request.id,
+            "phone_number": existing_request.phone_number,
+            "company_name": existing_request.company_name,
+            "company_website": existing_request.company_website,
+            "internship_obtained_through": existing_request.internship_obtained_through,
+            "internship_domain": existing_request.internship_domain,
+            "internship_mode": existing_request.internship_mode,
+            "start_date": existing_request.start_date,
+            "end_date": existing_request.end_date,
+            "total_duration": existing_request.total_duration,
+            "internship_location": existing_request.internship_location,
+            "stipend": existing_request.stipend,
+            "ppo_offered": existing_request.ppo_offered,
+            "expected_ctc": existing_request.expected_ctc,
+            "spoc_name": existing_request.spoc_name,
+            "spoc_designation": existing_request.spoc_designation,
+            "spoc_email": existing_request.spoc_email,
+            "spoc_phone": existing_request.spoc_phone,
+            "section": existing_request.section,
+            "status": existing_request.status,
+            "admin_notes": existing_request.admin_notes,
+            "requested_at": existing_request.requested_at.isoformat() if existing_request.requested_at else None
+        }
+        
+    return {
+        "student": {
+            "name": user.name,
+            "roll_number": user.roll_number,
+            "email": user.email,
+            "branch": user.branch,
+            "current_year": current_academic_year,
+            "cdc_band": cdc_band,
+            "auto_phone": phone_number
+        },
+        "existing_request": request_data
+    }
+
+
+@router.post("/apply-internship")
+def apply_for_internship(
+    payload: InternshipRequestModel,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    if not payload.company_name or not payload.company_name.strip():
+        raise HTTPException(status_code=400, detail="Company Name is required.")
+    if not payload.phone_number or len(payload.phone_number.strip()) < 10:
+        raise HTTPException(status_code=400, detail="A valid contact number is required.")
+
+    existing = db.query(InternshipRequest).filter(InternshipRequest.roll_number == user.roll_number).first()
+    
+    now = datetime.utcnow()
+    
+    if existing:
+        existing.student_name = user.name
+        existing.student_email = user.email
+        existing.branch = user.branch
+        existing.phone_number = payload.phone_number.strip()
+        existing.company_name = payload.company_name.strip()
+        existing.company_website = payload.company_website.strip() if payload.company_website else None
+        existing.internship_obtained_through = payload.internship_obtained_through
+        existing.internship_domain = payload.internship_domain
+        existing.internship_mode = payload.internship_mode
+        existing.start_date = payload.start_date
+        existing.end_date = payload.end_date
+        existing.total_duration = payload.total_duration
+        existing.internship_location = payload.internship_location
+        existing.stipend = payload.stipend
+        existing.ppo_offered = payload.ppo_offered
+        existing.expected_ctc = payload.expected_ctc
+        existing.spoc_name = payload.spoc_name
+        existing.spoc_designation = payload.spoc_designation
+        existing.spoc_email = payload.spoc_email
+        existing.spoc_phone = payload.spoc_phone
+        existing.section = payload.section
+        existing.status = "pending"
+        existing.requested_at = now
+        db.commit()
+        db.refresh(existing)
+        return {"message": "Internship request updated and submitted successfully!", "request_id": existing.id}
+    else:
+        req = InternshipRequest(
+            roll_number=user.roll_number,
+            student_name=user.name,
+            student_email=user.email,
+            branch=user.branch,
+            phone_number=payload.phone_number.strip(),
+            company_name=payload.company_name.strip(),
+            company_website=payload.company_website.strip() if payload.company_website else None,
+            internship_obtained_through=payload.internship_obtained_through,
+            internship_domain=payload.internship_domain,
+            internship_mode=payload.internship_mode,
+            start_date=payload.start_date,
+            end_date=payload.end_date,
+            total_duration=payload.total_duration,
+            internship_location=payload.internship_location,
+            stipend=payload.stipend,
+            ppo_offered=payload.ppo_offered,
+            expected_ctc=payload.expected_ctc,
+            spoc_name=payload.spoc_name,
+            spoc_designation=payload.spoc_designation,
+            spoc_email=payload.spoc_email,
+            spoc_phone=payload.spoc_phone,
+            section=payload.section,
+            status="pending",
+            requested_at=now
+        )
+        db.add(req)
+        db.commit()
+        db.refresh(req)
+        return {"message": "Internship request submitted successfully!", "request_id": req.id}
+
 
 
 

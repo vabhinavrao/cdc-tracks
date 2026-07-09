@@ -3,9 +3,28 @@ import { useState, useEffect } from 'react';
 import { 
   Award, TrendingUp, CheckCircle2, Target, BookOpen, Layers, 
   BarChart3, ShieldCheck, Star, Calendar, Bell, Mail, Phone, 
-  User, CheckCircle, AlertTriangle, ArrowUpRight, ChevronDown 
+  User, CheckCircle, AlertTriangle, ArrowUpRight, ChevronDown, AlertCircle
 } from 'lucide-react';
 import axios from 'axios';
+
+const shortenTestName = (name) => {
+  if (!name) return "";
+  return name
+    .replace(/Quantitative Aptitude/gi, "QA")
+    .replace(/Logical Reasoning/gi, "LR")
+    .replace(/Post As+es+ment/gi, "PA")
+    .replace(/Post Assess\./gi, "PA")
+    .replace(/\s+/g, " ")
+    .trim();
+};
+
+const formatYear = (yr) => {
+  if (yr === 1) return "1st Year";
+  if (yr === 2) return "2nd Year";
+  if (yr === 3) return "3rd Year";
+  if (yr === 4) return "4th Year";
+  return `${yr}th Year`;
+};
 
 const CDCDashboard = ({ user }) => {
   const [cdcData, setCdcData] = useState(null);
@@ -13,6 +32,8 @@ const CDCDashboard = ({ user }) => {
   const [error, setError] = useState('');
   const [selectedSemester, setSelectedSemester] = useState('All Semesters');
   const [hoveredTest, setHoveredTest] = useState(null);
+  const [selectedYear, setSelectedYear] = useState(null);
+  const [availableYears, setAvailableYears] = useState([]);
 
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -22,11 +43,18 @@ const CDCDashboard = ({ user }) => {
         setLoading(true);
         setError('');
         const response = await axios.get(`${API_URL}/api/student/cdc-dashboard-data`, {
+          params: selectedYear ? { academic_year: selectedYear } : {},
           headers: {
             'Authorization': `Bearer ${user.email}`
           }
         });
         setCdcData(response.data);
+        if (response.data.available_years) {
+          setAvailableYears(response.data.available_years);
+        }
+        if (response.data.student && selectedYear === null) {
+          setSelectedYear(response.data.student.academic_year);
+        }
       } catch (err) {
         console.error('Error fetching CDC dashboard data:', err);
         setError(err.response?.data?.detail || 'Failed to load CDC Performance data.');
@@ -38,7 +66,7 @@ const CDCDashboard = ({ user }) => {
     if (user?.email) {
       fetchCDCData();
     }
-  }, [user, API_URL]);
+  }, [user, API_URL, selectedYear]);
 
   if (loading) {
     return (
@@ -61,7 +89,7 @@ const CDCDashboard = ({ user }) => {
     );
   }
 
-  const { student, overall, post_assessments, domain_tracks, test_scores } = cdcData;
+  const { student, overall, post_assessments, domain_tracks, test_scores, test_mappings } = cdcData;
 
   // Generate comprehensive list of all 30 tests
   const rawScores = test_scores || {};
@@ -116,8 +144,12 @@ const CDCDashboard = ({ user }) => {
     const scoreVal = getScoreForTest(num, key);
     const isUnattempted = scoreVal === null || scoreVal === undefined || scoreVal === '';
 
+    const rawDisplayName = (test_mappings && (test_mappings[key] || test_mappings[`Test ${num}`])) || key;
+    const displayName = shortenTestName(rawDisplayName);
+
     return {
-      name: key,
+      name: displayName,
+      fullName: rawDisplayName,
       num,
       score: isUnattempted ? null : parseFloat(scoreVal),
       isUnattempted
@@ -186,11 +218,30 @@ const CDCDashboard = ({ user }) => {
     <div className="space-y-6 animate-fade-in pb-16 bg-slate-50/50 min-h-screen">
       
       {/* 1. Top Welcome Header Row */}
-      <div className="pt-2">
-        <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
-          Welcome back, <span className="text-emerald-600">{student.name || user.name}</span> 👋
-        </h1>
-        <p className="text-slate-500 text-sm mt-0.5 font-medium">Here's your CDC performance overview</p>
+      <div className="pt-2 flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+            Welcome back, <span className="text-emerald-600">{student.name || user.name}</span> 👋
+          </h1>
+          <p className="text-slate-500 text-sm mt-0.5 font-medium">Here's your CDC performance overview</p>
+        </div>
+        
+        {/* Year Dropdown Filter */}
+        {availableYears.length > 0 && (
+          <div className="flex items-center gap-2.5 bg-white px-4 py-2 rounded-2xl border border-slate-200 shadow-sm shrink-0 self-start sm:self-center">
+            <Calendar size={14} className="text-slate-400" />
+            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Academic Year:</span>
+            <select
+              value={selectedYear || ""}
+              onChange={(e) => setSelectedYear(Number(e.target.value))}
+              className="text-xs font-extrabold text-slate-700 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 focus:outline-none cursor-pointer hover:bg-slate-100/70 transition-colors"
+            >
+              {availableYears.map(yr => (
+                <option key={yr} value={yr}>{formatYear(yr)}</option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       {/* 2. Top Hero Student Profile & High Level Metrics Grid */}
@@ -346,11 +397,11 @@ const CDCDashboard = ({ user }) => {
             <div className="relative w-full h-48 pt-6 flex-1">
               {/* Crisp Un-stretched Milestone Text Labels */}
               <div className="absolute top-0 left-0 right-0 h-4 pointer-events-none z-10">
-                <span className="absolute -translate-x-1/2 text-[10px] font-extrabold text-purple-600 tracking-tight whitespace-nowrap" style={{ left: `${(8 / 29) * 100}%` }}>
-                  Track Name I
+                <span className="absolute -translate-x-1/2 text-[10px] font-extrabold text-purple-600 tracking-tight whitespace-nowrap" style={{ left: `${(8 / 29) * 100}%` }} title={domain_tracks?.["II-I"]?.domain}>
+                  {domain_tracks?.["II-I"]?.domain ? shortenTestName(domain_tracks["II-I"].domain) : "Track I"}
                 </span>
-                <span className="absolute -translate-x-1/2 text-[10px] font-extrabold text-purple-600 tracking-tight whitespace-nowrap" style={{ left: `${(22 / 29) * 100}%` }}>
-                  Track Name II
+                <span className="absolute -translate-x-1/2 text-[10px] font-extrabold text-purple-600 tracking-tight whitespace-nowrap" style={{ left: `${(22 / 29) * 100}%` }} title={domain_tracks?.["II-II"]?.domain}>
+                  {domain_tracks?.["II-II"]?.domain ? shortenTestName(domain_tracks["II-II"].domain) : "Track II"}
                 </span>
               </div>
 
@@ -572,8 +623,8 @@ const CDCDashboard = ({ user }) => {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
         
         {/* Semester CDC Domain Tracks (7 cols) */}
-        <div className="lg:col-span-7 bg-white rounded-3xl border border-slate-200/80 p-6 shadow-sm flex flex-col justify-between">
-          <div className="mb-4">
+        <div className="lg:col-span-7 bg-white rounded-3xl border border-slate-200/80 p-6 shadow-sm flex flex-col justify-start gap-6">
+          <div>
             <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
               <Layers className="text-emerald-600" size={18} />
               <span>SEMESTER CDC DOMAIN TRACKS</span>
@@ -581,32 +632,41 @@ const CDCDashboard = ({ user }) => {
             <p className="text-slate-400 text-xs mt-0.5">Track specializations trained during CDC weeks and semester evaluation</p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            {Object.entries(domain_tracks || {}).map(([semKey, data]) => (
-              <div key={semKey} className="bg-slate-50/70 rounded-2xl p-4 border border-slate-200/60 flex flex-col justify-between">
-                <div>
-                  <span className="inline-block px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-extrabold text-[10px] mb-2">
-                    Semester {semKey}
-                  </span>
-                  <h4 className="font-extrabold text-slate-800 text-sm leading-snug mb-3">{data.domain}</h4>
-                </div>
+          {!domain_tracks || Object.keys(domain_tracks).length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 px-4 text-center border border-dashed border-slate-200 rounded-2xl bg-slate-50/50 my-auto">
+              <AlertCircle size={32} className="text-slate-400 mb-3" />
+              <p className="text-sm font-semibold text-slate-500 max-w-[340px] leading-relaxed">
+                Domain data not available. Kindly contact the CDC department for further details.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {Object.entries(domain_tracks).map(([semKey, data]) => (
+                <div key={semKey} className="bg-slate-50/70 rounded-2xl p-4 border border-slate-200/60 flex flex-col justify-between">
+                  <div>
+                    <span className="inline-block px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-extrabold text-[10px] mb-2">
+                      Semester {semKey}
+                    </span>
+                    <h4 className="font-extrabold text-slate-800 text-sm leading-snug mb-3">{data.domain}</h4>
+                  </div>
 
-                <div>
-                  <div className="flex justify-between text-xs font-semibold mb-1">
-                    <span className="text-slate-400 text-[11px]">Domain Mastery</span>
-                    <span className="font-black text-emerald-600">{data.performance}%</span>
-                  </div>
-                  <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden mb-3">
-                    <div className="bg-emerald-500 h-full rounded-full" style={{ width: `${Math.min(data.performance, 100)}%` }}></div>
-                  </div>
-                  <div className="pt-2 border-t border-slate-200/60 text-[10px] text-slate-500 space-y-0.5">
-                    <p>Tests: <strong className="text-slate-700">{semKey==='I-II'||semKey==='II-I'?'1 - 8':'9 - 23'}</strong></p>
-                    <p className="text-indigo-600 font-semibold truncate">Track Score: {data.performance}%</p>
+                  <div>
+                    <div className="flex justify-between text-xs font-semibold mb-1">
+                      <span className="text-slate-400 text-[11px]">Domain Mastery</span>
+                      <span className="font-black text-emerald-600">{data.performance}%</span>
+                    </div>
+                    <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden mb-3">
+                      <div className="bg-emerald-500 h-full rounded-full" style={{ width: `${Math.min(data.performance, 100)}%` }}></div>
+                    </div>
+                    <div className="pt-2 border-t border-slate-200/60 text-[10px] text-slate-500 space-y-0.5">
+                      <p>Tests: <strong className="text-slate-700">{semKey==='I-II'||semKey==='II-I'?'1 - 8':'9 - 23'}</strong></p>
+                      <p className="text-indigo-600 font-semibold truncate">Track Score: {data.performance}%</p>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Track Name Milestones (5 cols) */}
@@ -726,10 +786,10 @@ const CDCDashboard = ({ user }) => {
                 <div key={title} className="bg-gradient-to-br from-slate-900 to-indigo-950 p-5 rounded-2xl text-white flex flex-col justify-between shadow-md hover:shadow-lg transition-shadow duration-300">
                   <div>
                     <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 block mb-1">
-                      Track Name {semesterLabel.replace("Sem ", "")}
+                      {semesterLabel ? `${semesterLabel} Track` : "Track Evaluation"}
                     </span>
                     <h4 className="font-extrabold text-white text-xs leading-snug mb-1 truncate" title={trackName}>
-                      {trackName}
+                      {shortenTestName(trackName)}
                     </h4>
                     <p className="text-[10px] text-slate-400 font-medium">Semester Track Evaluation</p>
                   </div>
@@ -788,6 +848,7 @@ const CDCDashboard = ({ user }) => {
                       ? 'ring-2 ring-emerald-500/50 bg-emerald-50/30 border-emerald-300' 
                       : 'bg-slate-50/60 border-slate-200/70 hover:border-slate-300'
                   }`}
+                  title={t.fullName}
                 >
                   <div className="flex items-center justify-between mb-1.5">
                     <span className="text-[11px] font-bold text-slate-600 truncate">{t.name}</span>
@@ -803,6 +864,13 @@ const CDCDashboard = ({ user }) => {
                 </div>
               );
             })}
+          </div>
+          
+          <div className="pt-3 border-t border-slate-100 flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+            <span className="text-emerald-600 font-extrabold">ABBREVIATIONS:</span>
+            <span>QA: Quantitative Aptitude</span>
+            <span>LR: Logical Reasoning</span>
+            <span>PA: Post Assessment</span>
           </div>
         </div>
 

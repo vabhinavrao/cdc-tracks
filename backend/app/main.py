@@ -71,6 +71,40 @@ def startup_event():
         except Exception:
             db.rollback()
 
+    conn_cols = ["test_mappings JSON"]
+    for col_def in conn_cols:
+        try:
+            from sqlalchemy import text
+            db.execute(text(f"ALTER TABLE google_sheet_connections ADD COLUMN {col_def}"))
+            db.commit()
+        except Exception:
+            db.rollback()
+
+    # Migration: Update cdc_performance index to allow multiple academic years per roll number
+    try:
+        from sqlalchemy import text
+        db.execute(text("DROP INDEX IF EXISTS ix_cdc_performance_roll_number"))
+        db.commit()
+    except Exception as e_mig:
+        print(f"Index migration warning (drop): {e_mig}")
+        db.rollback()
+        
+    try:
+        from sqlalchemy import text
+        db.execute(text("CREATE INDEX IF NOT EXISTS ix_cdc_performance_roll_number ON cdc_performance(roll_number)"))
+        db.commit()
+    except Exception as e_mig:
+        print(f"Index migration warning (create non-unique): {e_mig}")
+        db.rollback()
+
+    try:
+        from sqlalchemy import text
+        db.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_cdc_performance_roll_academic_year ON cdc_performance(roll_number, academic_year)"))
+        db.commit()
+    except Exception as e_mig:
+        print(f"Index migration warning (create unique composite): {e_mig}")
+        db.rollback()
+
     # Seed Project Topics
     try:
         from app.services.project_service import seed_project_topics_data
@@ -119,12 +153,19 @@ def startup_event():
         from app.services.cdc_service import seed_cdc_performance_data
         seed_cdc_performance_data(db)
         
-        # Also attempt live Google Sheets sync if credentials exist
-        from app.services.google_sheets_sync import sync_live_google_sheets
-        s1 = os.getenv("GOOGLE_SHEET_1_URL", "https://docs.google.com/spreadsheets/d/1U5X1r6ZQv4LH2WEEvmh3bEE4voOdqsIw3YG7DbpivAc/edit?gid=0#gid=0")
-        s2 = os.getenv("GOOGLE_SHEET_2_URL", "https://docs.google.com/spreadsheets/d/1yEZgkE2egyQqF67Vzh6LGdjTgh1zXqyjhNcQV38JUTU/edit?gid=0#gid=0")
-        res = sync_live_google_sheets(db, s1, s2)
-        print(f"Startup Google Sheets sync result: {res}")
+        # Only attempt live Google Sheets sync if no records exist in the CDCPerformance table.
+        # This prevents startup blockage on subsequent reloads/restarts.
+        from app.models import CDCPerformance
+        existing_cdc_count = db.query(CDCPerformance).count()
+        if existing_cdc_count == 0:
+            print("CDC database is empty. Attempting initial live Google Sheets sync...")
+            from app.services.google_sheets_sync import sync_live_google_sheets
+            s1 = os.getenv("GOOGLE_SHEET_1_URL", "https://docs.google.com/spreadsheets/d/1U5X1r6ZQv4LH2WEEvmh3bEE4voOdqsIw3YG7DbpivAc/edit?gid=0#gid=0")
+            s2 = os.getenv("GOOGLE_SHEET_2_URL", "https://docs.google.com/spreadsheets/d/1yEZgkE2egyQqF67Vzh6LGdjTgh1zXqyjhNcQV38JUTU/edit?gid=0#gid=0")
+            res = sync_live_google_sheets(db, s1, s2)
+            print(f"Startup Google Sheets sync result: {res}")
+        else:
+            print(f"CDC performance data already seeded ({existing_cdc_count} records). Skipping startup Google Sheets sync.")
     except Exception as e:
         print(f"CDC seeding notice: {e}")
         db.rollback()

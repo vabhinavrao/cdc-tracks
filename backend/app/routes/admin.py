@@ -8,8 +8,9 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.database import get_db
-from app.models import User, CDCPerformance, BatchSchedule, TrackSelectionHistory, FinalisedTrack, Track, ProjectTopic, StudentProjectSelection, HitamProjectRequest
+from app.models import User, CDCPerformance, BatchSchedule, TrackSelectionHistory, FinalisedTrack, Track, ProjectTopic, StudentProjectSelection, HitamProjectRequest, InternshipRequest, GoogleSheetConnection
 from app.utils import calculate_current_year
+
 
 router = APIRouter(prefix="/api/admin", tags=["Admin Dashboard & Analytics"])
 
@@ -38,6 +39,8 @@ def get_current_admin(authorization: Optional[str] = Header(None), db: Session =
 @router.get("/analytics")
 def get_admin_analytics(
     branch: Optional[str] = Query(None, description="Filter by branch (e.g. CSE, ECE, EEE, MECH, CSM)"),
+    batch_year: Optional[str] = Query(None, description="Filter by batch year (e.g. 2024-2028)"),
+    academic_year: Optional[str] = Query(None, description="Filter by academic year (1, 2, 3, 4)"),
     current_admin: User = Depends(get_current_admin),
     db: Session = Depends(get_db)
 ):
@@ -49,9 +52,26 @@ def get_admin_analytics(
     query = db.query(CDCPerformance)
     if effective_branch and effective_branch.upper() != "ALL":
         query = query.filter(func.upper(CDCPerformance.branch) == effective_branch.upper())
+    if batch_year and batch_year.upper() != "ALL":
+        query = query.filter(CDCPerformance.batch_year == batch_year)
+    if academic_year and academic_year.upper() != "ALL":
+        try:
+            query = query.filter(CDCPerformance.academic_year == int(academic_year))
+        except ValueError:
+            pass
         
     records = query.all()
+    if not academic_year or academic_year.upper() == "ALL":
+        latest_years = {}
+        for r in records:
+            roll = r.roll_number
+            if roll not in latest_years or r.academic_year > latest_years[roll]:
+                latest_years[roll] = r.academic_year
+        records = [r for r in records if r.academic_year == latest_years[r.roll_number]]
     total_students = len(records)
+    
+    all_branches = [b[0] for b in db.query(CDCPerformance.branch).distinct().all() if b[0]]
+    all_batches = [b[0] for b in db.query(CDCPerformance.batch_year).distinct().all() if b[0]]
     
     if total_students == 0:
         return {
@@ -61,7 +81,8 @@ def get_admin_analytics(
             "avg_cie": 0,
             "avg_consistency": 0,
             "band_distribution": {"A": 0, "B": 0, "C": 0, "D": 0, "Unassigned": 0},
-            "available_branches": [b[0] for b in db.query(CDCPerformance.branch).distinct().all() if b[0]]
+            "available_branches": sorted(all_branches),
+            "available_batches": sorted(all_batches)
         }
         
     avg_perf = sum(r.avg_performance or 0 for r in records) / total_students
@@ -76,9 +97,6 @@ def get_admin_analytics(
         else:
             band_counts["Unassigned"] += 1
             
-    # Get all unique branches available in the system
-    all_branches = [b[0] for b in db.query(CDCPerformance.branch).distinct().all() if b[0]]
-    
     return {
         "total_students": total_students,
         "branch_filter": effective_branch or "ALL",
@@ -86,12 +104,15 @@ def get_admin_analytics(
         "avg_cie": round(avg_cie, 2),
         "avg_consistency": round(avg_cons, 2),
         "band_distribution": band_counts,
-        "available_branches": sorted(all_branches)
+        "available_branches": sorted(all_branches),
+        "available_batches": sorted(all_batches)
     }
 
 @router.get("/students")
 def get_admin_students(
     branch: Optional[str] = Query(None),
+    batch_year: Optional[str] = Query(None),
+    academic_year: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
     band: Optional[str] = Query(None, description="Filter by CDC Band (A, B, C, D)"),
     sort_by: Optional[str] = Query(None, description="Sort order (rank, perf_desc, perf_asc, cie_desc, consistency_desc, name)"),
@@ -105,6 +126,15 @@ def get_admin_students(
     query = db.query(CDCPerformance)
     if effective_branch and effective_branch.upper() != "ALL":
         query = query.filter(func.upper(CDCPerformance.branch) == effective_branch.upper())
+        
+    if batch_year and batch_year.upper() != "ALL":
+        query = query.filter(CDCPerformance.batch_year == batch_year)
+        
+    if academic_year and academic_year.upper() != "ALL":
+        try:
+            query = query.filter(CDCPerformance.academic_year == int(academic_year))
+        except ValueError:
+            pass
         
     if band and band.upper() != "ALL":
         query = query.filter(func.upper(CDCPerformance.cdc_band) == band.upper())
@@ -132,9 +162,22 @@ def get_admin_students(
         query = query.order_by(CDCPerformance.cdc_rank.asc().nullslast())
         
     from app.services.cdc_service import get_branch_ranks_map
-    branch_ranks = get_branch_ranks_map(db)
+    acad_yr_int = None
+    if academic_year and academic_year.upper() != "ALL":
+        try:
+            acad_yr_int = int(academic_year)
+        except ValueError:
+            pass
+    branch_ranks = get_branch_ranks_map(db, batch_year=batch_year, academic_year=acad_yr_int)
     
     records = query.all()
+    if not academic_year or academic_year.upper() == "ALL":
+        latest_years = {}
+        for r in records:
+            roll = r.roll_number
+            if roll not in latest_years or r.academic_year > latest_years[roll]:
+                latest_years[roll] = r.academic_year
+        records = [r for r in records if r.academic_year == latest_years[r.roll_number]]
     
     student_list = []
     for r in records:
@@ -144,7 +187,7 @@ def get_admin_students(
             "branch": r.branch or "N/A",
             "email": r.email or "N/A",
             "cdc_rank": r.cdc_rank,
-            "branch_rank": branch_ranks.get(r.roll_number),
+            "branch_rank": branch_ranks.get((r.roll_number, r.academic_year)),
             "cdc_band": r.cdc_band or "N/A",
             "avg_performance": r.avg_performance,
             "cie_score": r.cie_score,
@@ -166,11 +209,15 @@ def get_admin_student_detail(
 ):
     clean_identifier = roll_number.strip()
     # Try matching by roll number first
-    record = db.query(CDCPerformance).filter(func.upper(CDCPerformance.roll_number) == clean_identifier.upper()).first()
+    record = db.query(CDCPerformance).filter(
+        func.upper(CDCPerformance.roll_number) == clean_identifier.upper()
+    ).order_by(CDCPerformance.academic_year.desc()).first()
     
     # Fallback to email search if not found
     if not record:
-        record = db.query(CDCPerformance).filter(func.lower(CDCPerformance.email) == clean_identifier.lower()).first()
+        record = db.query(CDCPerformance).filter(
+            func.lower(CDCPerformance.email) == clean_identifier.lower()
+        ).order_by(CDCPerformance.academic_year.desc()).first()
         
     if not record:
         raise HTTPException(status_code=404, detail=f"Student record '{roll_number}' not found.")
@@ -186,8 +233,9 @@ def get_admin_student_detail(
         (func.lower(User.email) == (record.email or "").lower())
     ).first()
     
-    from app.services.cdc_service import calculate_ranks
+    from app.services.cdc_service import calculate_ranks, get_test_mappings
     ranks = calculate_ranks(db, record)
+    test_mappings = get_test_mappings(db, record.batch_year, record.academic_year)
     
     return {
         "student": {
@@ -214,6 +262,7 @@ def get_admin_student_detail(
         "post_assessments": record.post_assessments or {},
         "domain_tracks": record.domain_tracks or {},
         "test_scores": record.test_scores or {},
+        "test_mappings": test_mappings,
         "user_profile": {
             "selected_track_id": user_record.selected_track_id if user_record else None,
             "bookmarked_tracks": user_record.bookmarked_tracks if user_record else [],
@@ -228,6 +277,8 @@ def get_admin_student_detail(
 @router.get("/detailed-analytics")
 def get_admin_detailed_analytics(
     branch: Optional[str] = Query(None, description="Filter by branch"),
+    batch_year: Optional[str] = Query(None, description="Filter by batch year (e.g. 2024-2028)"),
+    academic_year: Optional[str] = Query(None, description="Filter by academic year (e.g. 1, 2, 3, 4)"),
     current_admin: User = Depends(get_current_admin),
     db: Session = Depends(get_db)
 ):
@@ -239,7 +290,23 @@ def get_admin_detailed_analytics(
     if effective_branch and effective_branch.upper() != "ALL":
         query = query.filter(func.upper(CDCPerformance.branch) == effective_branch.upper())
         
+    if batch_year and batch_year.upper() != "ALL":
+        query = query.filter(CDCPerformance.batch_year == batch_year)
+        
+    if academic_year and academic_year.upper() != "ALL":
+        try:
+            query = query.filter(CDCPerformance.academic_year == int(academic_year))
+        except ValueError:
+            pass
+        
     records = query.all()
+    if not academic_year or academic_year.upper() == "ALL":
+        latest_years = {}
+        for r in records:
+            roll = r.roll_number
+            if roll not in latest_years or r.academic_year > latest_years[roll]:
+                latest_years[roll] = r.academic_year
+        records = [r for r in records if r.academic_year == latest_years[r.roll_number]]
     total_students = len(records)
 
     if total_students == 0:
@@ -567,7 +634,7 @@ def get_students_enrolled_in_track(
         cdc_rec = db.query(CDCPerformance).filter(
             (func.upper(CDCPerformance.roll_number) == u.roll_number.upper()) |
             (func.lower(CDCPerformance.email) == u.email.lower())
-        ).first()
+        ).order_by(CDCPerformance.academic_year.desc()).first()
         
         student_results.append({
             "roll_number": u.roll_number,
@@ -583,7 +650,7 @@ def get_students_enrolled_in_track(
             "cie_score": cdc_rec.cie_score if cdc_rec else 0.0
         })
         
-        return {
+    return {
         "track_id": clean_track_id,
         "count": len(student_results),
         "students": student_results
@@ -784,6 +851,12 @@ def export_batch_xlsx(
     if clean_batch != "ALL":
         cdc_query = cdc_query.filter(CDCPerformance.batch_year == clean_batch)
     records = cdc_query.all()
+    latest_years = {}
+    for r in records:
+        roll = r.roll_number
+        if roll not in latest_years or r.academic_year > latest_years[roll]:
+            latest_years[roll] = r.academic_year
+    records = [r for r in records if r.academic_year == latest_years[r.roll_number]]
 
     students_data = []
     for r in records:
@@ -1020,6 +1093,206 @@ def update_hitam_request_status(
     return {"message": "Request status updated successfully.", "id": req.id, "status": req.status}
 
 
+class UpdateInternshipRequestStatus(BaseModel):
+    status: str # pending, contacted, approved, rejected
+    admin_notes: Optional[str] = None
 
 
+@router.get("/internship-requests")
+def get_admin_internship_requests(
+    branch: Optional[str] = Query(None),
+    status_filter: Optional[str] = Query(None),
+    current_admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    effective_branch = branch
+    if current_admin.role == "branch_admin":
+        effective_branch = current_admin.assigned_branch
 
+    query = db.query(InternshipRequest)
+    if effective_branch and effective_branch.upper() != "ALL":
+        query = query.filter(func.upper(InternshipRequest.branch) == effective_branch.upper())
+
+    if status_filter and status_filter.upper() != "ALL":
+        query = query.filter(func.upper(InternshipRequest.status) == status_filter.upper())
+
+    requests = query.order_by(InternshipRequest.requested_at.desc()).all()
+
+    result = []
+    for r in requests:
+        result.append({
+            "id": r.id,
+            "roll_number": r.roll_number,
+            "student_name": r.student_name,
+            "student_email": r.student_email,
+            "branch": r.branch,
+            "phone_number": r.phone_number,
+            
+            "company_name": r.company_name,
+            "company_website": r.company_website,
+            "internship_obtained_through": r.internship_obtained_through,
+            "internship_domain": r.internship_domain,
+            "internship_mode": r.internship_mode,
+            "start_date": r.start_date,
+            "end_date": r.end_date,
+            "total_duration": r.total_duration,
+            "internship_location": r.internship_location,
+            "stipend": r.stipend,
+            "ppo_offered": r.ppo_offered,
+            "expected_ctc": r.expected_ctc,
+            
+            "spoc_name": r.spoc_name,
+            "spoc_designation": r.spoc_designation,
+            "spoc_email": r.spoc_email,
+            "spoc_phone": r.spoc_phone,
+            "section": r.section,
+            
+            "status": r.status,
+            "admin_notes": r.admin_notes,
+            "requested_at": r.requested_at.isoformat() if r.requested_at else None
+        })
+
+    return {
+        "total_requests": len(result),
+        "requests": result
+    }
+
+
+@router.patch("/internship-requests/{request_id}")
+def update_internship_request_status(
+    request_id: int,
+    payload: UpdateInternshipRequestStatus,
+    current_admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    req = db.query(InternshipRequest).filter(InternshipRequest.id == request_id).first()
+    if not req:
+        raise HTTPException(status_code=404, detail="Internship request not found.")
+
+    if current_admin.role == "branch_admin" and req.branch.upper() != current_admin.assigned_branch.upper():
+        raise HTTPException(status_code=403, detail="You do not have permission to manage requests outside your department.")
+
+    req.status = payload.status.lower()
+    if payload.admin_notes is not None:
+        req.admin_notes = payload.admin_notes.strip()
+
+    db.commit()
+    return {"message": "Internship request status updated successfully.", "id": req.id, "status": req.status}
+
+
+# ==========================================
+# GOOGLE SHEETS SETUP & SYNC ENDPOINTS
+# ==========================================
+
+class GoogleSheetConnectionRequest(BaseModel):
+    batch_year: str
+    academic_year: int
+    sheet_type: str  # "overall_marks" or "domain_info"
+    sheet_url: str
+
+@router.get("/google-sheets")
+def get_google_sheet_connections(
+    current_admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    conns = db.query(GoogleSheetConnection).all()
+    res = []
+    for c in conns:
+        res.append({
+            "id": c.id,
+            "batch_year": c.batch_year,
+            "academic_year": c.academic_year,
+            "sheet_type": c.sheet_type,
+            "sheet_url": c.sheet_url,
+            "created_at": c.created_at.isoformat() if c.created_at else None,
+            "updated_at": c.updated_at.isoformat() if c.updated_at else None,
+            "last_synced": c.last_synced.isoformat() if c.last_synced else None,
+            "sync_status": c.sync_status,
+            "sync_message": c.sync_message
+        })
+    return res
+
+@router.post("/google-sheets")
+def add_google_sheet_connection(
+    payload: GoogleSheetConnectionRequest,
+    current_admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    sheet_type = payload.sheet_type.strip().lower()
+    if sheet_type not in ["overall_marks", "domain_info"]:
+        raise HTTPException(status_code=400, detail="sheet_type must be either 'overall_marks' or 'domain_info'")
+
+    new_conn = GoogleSheetConnection(
+        batch_year=payload.batch_year.strip(),
+        academic_year=payload.academic_year,
+        sheet_type=sheet_type,
+        sheet_url=payload.sheet_url.strip()
+    )
+    db.add(new_conn)
+    try:
+        db.commit()
+        db.refresh(new_conn)
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to add connection: {str(e)}")
+        
+    return {"message": "Google Sheet Connection added successfully", "id": new_conn.id}
+
+@router.put("/google-sheets/{conn_id}")
+def update_google_sheet_connection(
+    conn_id: int,
+    payload: GoogleSheetConnectionRequest,
+    current_admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    conn = db.query(GoogleSheetConnection).filter(GoogleSheetConnection.id == conn_id).first()
+    if not conn:
+        raise HTTPException(status_code=404, detail="Connection not found")
+
+    sheet_type = payload.sheet_type.strip().lower()
+    if sheet_type not in ["overall_marks", "domain_info"]:
+        raise HTTPException(status_code=400, detail="sheet_type must be either 'overall_marks' or 'domain_info'")
+
+    conn.batch_year = payload.batch_year.strip()
+    conn.academic_year = payload.academic_year
+    conn.sheet_type = sheet_type
+    conn.sheet_url = payload.sheet_url.strip()
+
+    try:
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to update connection: {str(e)}")
+
+    return {"message": "Google Sheet Connection updated successfully", "id": conn.id}
+
+@router.delete("/google-sheets/{conn_id}")
+def delete_google_sheet_connection(
+    conn_id: int,
+    current_admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    conn = db.query(GoogleSheetConnection).filter(GoogleSheetConnection.id == conn_id).first()
+    if not conn:
+        raise HTTPException(status_code=404, detail="Connection not found")
+
+    db.delete(conn)
+    try:
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to delete connection: {str(e)}")
+
+    return {"message": "Google Sheet Connection deleted successfully"}
+
+@router.post("/google-sheets/{conn_id}/sync")
+def sync_google_sheet_connection_endpoint(
+    conn_id: int,
+    current_admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    from app.services.google_sheets_sync import sync_google_sheet_connection
+    res = sync_google_sheet_connection(db, conn_id)
+    if not res["success"]:
+        raise HTTPException(status_code=400, detail=res["message"])
+    return res
