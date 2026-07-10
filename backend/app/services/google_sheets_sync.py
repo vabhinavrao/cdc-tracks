@@ -3,7 +3,7 @@ import os
 import json
 import logging
 from sqlalchemy.orm import Session
-from app.models import CDCPerformance
+from app.models import CDCPerformance, User
 
 logger = logging.getLogger("cdc_sync")
 
@@ -67,6 +67,144 @@ def fetch_sheet_records(wks):
             row_dict[header] = val
         records.append(row_dict)
     return records
+
+def ensure_student_user(db: Session, roll: str, row: dict, name_col: str = None, branch_col: str = None, email_col: str = None, batch_year: str = None):
+    """
+    Checks if a student user profile exists for the given roll number.
+    If not, creates it using parsed roll details or row details.
+    If it exists, updates it with the latest Name/Branch/Email and batch details.
+    """
+    roll = roll.strip().upper()
+    if not roll:
+        return
+        
+    # Standard email detection
+    email_clean = ""
+    if email_col and row.get(email_col):
+        email_clean = str(row.get(email_col)).strip().lower()
+    else:
+        # Fallback candidates
+        for cand in ["Mail ID", "Email", "Email ID", "Mail_ID", "Email_ID", "mail id", "email", "email id"]:
+            if row.get(cand):
+                email_clean = str(row.get(cand)).strip().lower()
+                break
+                
+    if not email_clean or "@" not in email_clean:
+        email_clean = f"{roll.lower()}@hitam.org"
+        
+    user_obj = db.query(User).filter(User.roll_number == roll).first()
+    
+    name_val = ""
+    if name_col and row.get(name_col):
+        name_val = str(row.get(name_col)).strip()
+    else:
+        # Fallback candidates
+        for cand in ["Name", "Student Name", "name", "student name"]:
+            if row.get(cand):
+                name_val = str(row.get(cand)).strip()
+                break
+
+    branch_val = ""
+    if branch_col and row.get(branch_col):
+        branch_val = str(row.get(branch_col)).strip()
+    else:
+        # Fallback candidates
+        for cand in ["Branch", "branch"]:
+            if row.get(cand):
+                branch_val = str(row.get(cand)).strip()
+                break
+
+    # Parse JNTU Roll details
+    joining_year = 2024
+    graduation_year = 2028
+    admission_type = "Regular"
+    branch_parsed = branch_val
+    
+    if len(roll) == 10:
+        try:
+            joining_digits = int(roll[0:2])
+            raw_year = 2000 + joining_digits
+            
+            admission_char = roll[4]
+            if admission_char == '1':
+                admission_type = "Regular"
+            elif admission_char == '5':
+                admission_type = "Lateral Entry"
+            else:
+                admission_type = f"Unknown ({admission_char})"
+                
+            if admission_type == "Lateral Entry":
+                # Direct join to 2nd year. Grad year is raw_year + 3. Cohort starting year is raw_year - 1.
+                graduation_year = raw_year + 3
+                joining_year = raw_year - 1
+            else:
+                graduation_year = raw_year + 4
+                joining_year = raw_year
+                
+            branch_code = roll[6:8]
+            branch_mapping = {
+                "02": "EEE", "03": "MECH", "04": "ECE", "05": "CSE", "66": "CSE AI/ML", "67": "CSE Data Science"
+            }
+            if not branch_parsed:
+                branch_parsed = branch_mapping.get(branch_code, "")
+        except Exception:
+            pass
+
+    # Detained check: if regular student is synced under a batch starting after their default joining year
+    if admission_type == "Regular" and batch_year:
+        try:
+            parts = batch_year.split("-")
+            if len(parts) == 2:
+                sheet_start_year = int(parts[0])
+                if sheet_start_year > joining_year:
+                    # Automatically register as detained in DetainedStudent table
+                    from app.models import DetainedStudent
+                    det_entry = db.query(DetainedStudent).filter(DetainedStudent.roll_number == roll).first()
+                    if not det_entry:
+                        det_entry = DetainedStudent(roll_number=roll, detained_to_batch=batch_year)
+                        db.add(det_entry)
+                    else:
+                        det_entry.detained_to_batch = batch_year
+                    db.commit()
+        except Exception as e_det:
+            logger.warning(f"Error auto-registering detained student {roll}: {e_det}")
+            db.rollback()
+
+    # Look up if student is registered as detained in DetainedStudent table
+    from app.models import DetainedStudent
+    det_entry = db.query(DetainedStudent).filter(DetainedStudent.roll_number == roll).first()
+    if det_entry:
+        try:
+            parts = det_entry.detained_to_batch.split("-")
+            if len(parts) == 2:
+                joining_year = int(parts[0])
+                graduation_year = int(parts[1])
+        except Exception:
+            pass
+
+    if not user_obj:
+        user_obj = User(
+            email=email_clean,
+            roll_number=roll,
+            joining_year=joining_year,
+            graduation_year=graduation_year,
+            admission_type=admission_type,
+            branch=branch_parsed or "CSE",
+            name=name_val,
+            role="student"
+        )
+        db.add(user_obj)
+    else:
+        if name_val:
+            user_obj.name = name_val
+        if branch_val:
+            user_obj.branch = branch_val
+        if email_clean and "@" in email_clean:
+            user_obj.email = email_clean
+        # Always update joining, graduation year, and admission type dynamically
+        user_obj.joining_year = joining_year
+        user_obj.graduation_year = graduation_year
+        user_obj.admission_type = admission_type
 
 def sync_live_google_sheets(db: Session, sheet1_id_or_url: str, sheet2_id_or_url: str, credentials_path: str = "service_account.json"):
     """
@@ -278,6 +416,7 @@ def sync_live_google_sheets(db: Session, sheet1_id_or_url: str, sheet2_id_or_url
             if roll in domain_map:
                 cdc_obj.domain_tracks = domain_map[roll]
 
+            ensure_student_user(db, roll, row, batch_year=batch_year)
             synced_count += 1
 
         # Update or create default overall_marks connection to store test_mappings
@@ -564,6 +703,7 @@ def sync_google_sheet_connection(db: Session, connection_id: int, credentials_pa
                 existing_post_assessments.update(new_post_assessments)
                 cdc_obj.post_assessments = existing_post_assessments
                 
+                ensure_student_user(db, roll, row, name_col=name_col, branch_col=branch_col, email_col=email_col, batch_year=connection.batch_year)
                 synced_count += 1
                 
         elif connection.sheet_type == "domain_info":
@@ -622,6 +762,7 @@ def sync_google_sheet_connection(db: Session, connection_id: int, credentials_pa
                             "performance": p_val
                         }
                 cdc_obj.domain_tracks = existing_domain_tracks
+                ensure_student_user(db, roll, row, name_col=name_col, branch_col=branch_col, email_col=email_col, batch_year=connection.batch_year)
                 synced_count += 1
                 
         connection.sync_status = "success"

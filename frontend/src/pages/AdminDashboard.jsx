@@ -5,12 +5,13 @@ import axios from 'axios';
 import { 
   Users, Award, BookOpen, Search, Filter, RefreshCw, 
   ChevronRight, ChevronLeft, X, User, CheckCircle2, AlertCircle, TrendingUp, ShieldCheck, Building2,
-  Target, Layers, BarChart3, Mail, CheckCircle, AlertTriangle, LayoutDashboard, LineChart, FileSpreadsheet, Calendar
+  Target, Layers, BarChart3, Mail, CheckCircle, AlertTriangle, LayoutDashboard, LineChart, FileSpreadsheet, Calendar, UserMinus
 } from 'lucide-react';
 import DetailedDashboard from '../components/admin/DetailedDashboard';
 import TrackBatchControlPanel from '../components/admin/TrackBatchControlPanel';
 import ProjectManagementAdmin from '../components/admin/ProjectManagementAdmin';
 import GoogleSheetsSetup from '../components/admin/GoogleSheetsSetup';
+import DetainedStudentsSetup from '../components/admin/DetainedStudentsSetup';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -779,6 +780,18 @@ const AdminDashboard = ({ user }) => {
           <FileSpreadsheet size={16} />
           <span>Google Sheets Sync</span>
         </button>
+
+        <button
+          onClick={() => setActiveTab('detained')}
+          className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl text-xs font-bold transition-all cursor-pointer ${
+            activeTab === 'detained'
+              ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
+              : 'bg-white hover:bg-slate-100 text-slate-600 border border-slate-200'
+          }`}
+        >
+          <UserMinus size={16} />
+          <span>Detained Students</span>
+        </button>
       </div>
 
       {activeTab === 'projects' ? (
@@ -795,6 +808,8 @@ const AdminDashboard = ({ user }) => {
         />
       ) : activeTab === 'sheets' ? (
         <GoogleSheetsSetup user={user} />
+      ) : activeTab === 'detained' ? (
+        <DetainedStudentsSetup user={user} />
       ) : (
         <div className="space-y-8">
 

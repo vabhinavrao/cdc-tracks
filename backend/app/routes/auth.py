@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from app.database import get_db
-from app.models import User
+from app.models import User, DetainedStudent
 from app.utils import parse_roll_number, get_auto_allocated_track_id
 
 router = APIRouter(prefix="/api/auth", tags=["Authentication"])
@@ -92,6 +92,15 @@ def google_login(payload: GoogleLoginRequest, db: Session = Depends(get_db)):
         default_name = payload.name
         try:
             parsed_data = parse_roll_number(email)
+            det_student = db.query(DetainedStudent).filter(DetainedStudent.roll_number == parsed_data["roll_number"]).first()
+            if det_student:
+                parts = det_student.detained_to_batch.split("-")
+                if len(parts) == 2:
+                    try:
+                        parsed_data["joining_year"] = int(parts[0])
+                        parsed_data["graduation_year"] = int(parts[1])
+                    except ValueError:
+                        pass
         except ValueError as e:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,

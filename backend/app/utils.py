@@ -22,15 +22,7 @@ def parse_roll_number(email: str) -> dict:
     if len(roll_number) != 10:
         raise ValueError("Invalid student roll number length. Must be exactly 10 characters.")
     
-    # 1. Joining Year (positions 1-2, index 0-1)
-    try:
-        joining_digits = int(roll_number[0:2])
-        joining_year = 2000 + joining_digits
-        graduation_year = joining_year + 4
-    except ValueError:
-        raise ValueError("Could not parse joining year from roll number.")
-    
-    # 2. Admission Type (position 5, index 4)
+    # 1. Admission Type (position 5, index 4)
     admission_char = roll_number[4]
     if admission_char == '1':
         admission_type = "Regular"
@@ -38,6 +30,20 @@ def parse_roll_number(email: str) -> dict:
         admission_type = "Lateral Entry"
     else:
         admission_type = f"Unknown ({admission_char})"
+
+    # 2. Joining & Graduation Year (positions 1-2, index 0-1)
+    try:
+        joining_digits = int(roll_number[0:2])
+        raw_year = 2000 + joining_digits
+        if admission_type == "Lateral Entry":
+            # Direct join to 2nd year. Grad year is raw_year + 3. Cohort starting year is raw_year - 1.
+            graduation_year = raw_year + 3
+            joining_year = raw_year - 1
+        else:
+            graduation_year = raw_year + 4
+            joining_year = raw_year
+    except ValueError:
+        raise ValueError("Could not parse joining year from roll number.")
         
     # 3. Branch Code Mapping (positions 7-8, index 6-7)
     branch_code = roll_number[6:8]

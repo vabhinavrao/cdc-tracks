@@ -150,20 +150,25 @@ def startup_event():
     # 1.6 Seed CDC Performance data
 
     try:
-        from app.services.cdc_service import seed_cdc_performance_data
-        seed_cdc_performance_data(db)
+        # Commented out to prevent automatic seeding of demo student records on startup
+        # from app.services.cdc_service import seed_cdc_performance_data
+        # seed_cdc_performance_data(db)
+        pass
         
         # Only attempt live Google Sheets sync if no records exist in the CDCPerformance table.
         # This prevents startup blockage on subsequent reloads/restarts.
         from app.models import CDCPerformance
         existing_cdc_count = db.query(CDCPerformance).count()
         if existing_cdc_count == 0:
-            print("CDC database is empty. Attempting initial live Google Sheets sync...")
-            from app.services.google_sheets_sync import sync_live_google_sheets
-            s1 = os.getenv("GOOGLE_SHEET_1_URL", "https://docs.google.com/spreadsheets/d/1U5X1r6ZQv4LH2WEEvmh3bEE4voOdqsIw3YG7DbpivAc/edit?gid=0#gid=0")
-            s2 = os.getenv("GOOGLE_SHEET_2_URL", "https://docs.google.com/spreadsheets/d/1yEZgkE2egyQqF67Vzh6LGdjTgh1zXqyjhNcQV38JUTU/edit?gid=0#gid=0")
-            res = sync_live_google_sheets(db, s1, s2)
-            print(f"Startup Google Sheets sync result: {res}")
+            s1 = os.getenv("GOOGLE_SHEET_1_URL")
+            s2 = os.getenv("GOOGLE_SHEET_2_URL")
+            if s1 and s2:
+                print("CDC database is empty. Attempting initial live Google Sheets sync...")
+                from app.services.google_sheets_sync import sync_live_google_sheets
+                res = sync_live_google_sheets(db, s1, s2)
+                print(f"Startup Google Sheets sync result: {res}")
+            else:
+                print("CDC database is empty. Skipping startup sync because GOOGLE_SHEET_1_URL and GOOGLE_SHEET_2_URL are not set in environment.")
         else:
             print(f"CDC performance data already seeded ({existing_cdc_count} records). Skipping startup Google Sheets sync.")
     except Exception as e:

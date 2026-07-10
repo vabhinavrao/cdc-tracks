@@ -1,4 +1,5 @@
 from sqlalchemy import Column, Integer, String, JSON, Float, DateTime, Boolean, UniqueConstraint
+from sqlalchemy.orm import relationship
 from datetime import datetime
 from app.database import Base
 
@@ -20,6 +21,14 @@ class User(Base):
     assigned_branch = Column(String, nullable=True)
     status = Column(String, default="active", nullable=False) # active, alumni
     current_academic_year = Column(Integer, nullable=True) # 1, 2, 3, 4
+
+    performance_records = relationship(
+        "CDCPerformance",
+        back_populates="student_user",
+        primaryjoin="User.roll_number == CDCPerformance.roll_number",
+        foreign_keys="CDCPerformance.roll_number",
+        cascade="all, delete-orphan"
+    )
 
 
 class Track(Base):
@@ -59,6 +68,14 @@ class CDCPerformance(Base):
     test_scores = Column(JSON, default=dict)       # e.g. {"Test 1": 80.0, ...}
     post_assessments = Column(JSON, default=dict)  # e.g. {"Post Assessment II-I": 82.86, ...}
     domain_tracks = Column(JSON, default=dict)     # e.g. {"I-II": {"domain": "Aptitude and Reasoning", "performance": 60}, ...}
+
+    student_user = relationship(
+        "User",
+        back_populates="performance_records",
+        primaryjoin="CDCPerformance.roll_number == User.roll_number",
+        foreign_keys="CDCPerformance.roll_number",
+        uselist=False
+    )
 
 class BatchSchedule(Base):
     __tablename__ = "batch_schedules"
@@ -210,6 +227,15 @@ class GoogleSheetConnection(Base):
     sync_status = Column(String, nullable=True) # "success", "failed", "syncing"
     sync_message = Column(String, nullable=True)
     test_mappings = Column(JSON, default=dict, nullable=True)
+
+
+class DetainedStudent(Base):
+    __tablename__ = "detained_students"
+
+    id = Column(Integer, primary_key=True, index=True)
+    roll_number = Column(String, unique=True, index=True, nullable=False)
+    detained_to_batch = Column(String, nullable=False) # e.g. "2025-2029"
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
 
 

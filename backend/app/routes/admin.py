@@ -8,8 +8,8 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.database import get_db
-from app.models import User, CDCPerformance, BatchSchedule, TrackSelectionHistory, FinalisedTrack, Track, ProjectTopic, StudentProjectSelection, HitamProjectRequest, InternshipRequest, GoogleSheetConnection
-from app.utils import calculate_current_year
+from app.models import User, CDCPerformance, BatchSchedule, TrackSelectionHistory, FinalisedTrack, Track, ProjectTopic, StudentProjectSelection, HitamProjectRequest, InternshipRequest, GoogleSheetConnection, DetainedStudent
+from app.utils import calculate_current_year, parse_roll_number
 
 
 router = APIRouter(prefix="/api/admin", tags=["Admin Dashboard & Analytics"])
@@ -1296,3 +1296,140 @@ def sync_google_sheet_connection_endpoint(
     if not res["success"]:
         raise HTTPException(status_code=400, detail=res["message"])
     return res
+
+
+class DetainStudentRequest(BaseModel):
+    roll_number: str
+    detained_to_batch: str
+
+@router.get("/detained-students")
+def get_detained_students(
+    current_admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    det_list = db.query(DetainedStudent).order_by(DetainedStudent.created_at.desc()).all()
+    res = []
+    for d in det_list:
+        res.append({
+            "id": d.id,
+            "roll_number": d.roll_number,
+            "detained_to_batch": d.detained_to_batch,
+            "created_at": d.created_at.isoformat() if d.created_at else None
+        })
+    return res
+
+@router.post("/detained-students")
+def add_detained_student(
+    payload: DetainStudentRequest,
+    current_admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    import re
+    roll = payload.roll_number.strip().upper()
+    batch = payload.detained_to_batch.strip()
+    
+    # Validate batch format (e.g. 2024-2028)
+    if not re.match(r"^\d{4}-\d{4}$", batch):
+        raise HTTPException(status_code=400, detail="detained_to_batch must match format 'YYYY-YYYY'")
+        
+    try:
+        # Check if record already exists
+        det_entry = db.query(DetainedStudent).filter(DetainedStudent.roll_number == roll).first()
+        if not det_entry:
+            det_entry = DetainedStudent(roll_number=roll, detained_to_batch=batch)
+            db.add(det_entry)
+        else:
+            det_entry.detained_to_batch = batch
+            
+        # Update User record if exists
+        user_obj = db.query(User).filter(User.roll_number == roll).first()
+        parts = batch.split("-")
+        joining_year = int(parts[0])
+        graduation_year = int(parts[1])
+        
+        if user_obj:
+            user_obj.joining_year = joining_year
+            user_obj.graduation_year = graduation_year
+            
+        # Update CDCPerformance records if exist
+        db.query(CDCPerformance).filter(CDCPerformance.roll_number == roll).update(
+            {"batch_year": batch}, synchronize_session=False
+        )
+        
+        # Update FinalisedTrack records if exist
+        db.query(FinalisedTrack).filter(FinalisedTrack.roll_number == roll).update(
+            {"batch_year": batch}, synchronize_session=False
+        )
+        
+        # Update TrackSelectionHistory records if exist
+        db.query(TrackSelectionHistory).filter(TrackSelectionHistory.roll_number == roll).update(
+            {"batch_year": batch}, synchronize_session=False
+        )
+        
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to add detained student: {str(e)}")
+        
+    return {"message": f"Student {roll} has been registered as detained to batch {batch}."}
+
+@router.delete("/detained-students/{roll_number}")
+def remove_detained_student(
+    roll_number: str,
+    current_admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    roll = roll_number.strip().upper()
+    
+    det_entry = db.query(DetainedStudent).filter(DetainedStudent.roll_number == roll).first()
+    if not det_entry:
+        raise HTTPException(status_code=404, detail="Student not found in detained list")
+        
+    try:
+        db.delete(det_entry)
+        
+        # Restore original batch details from roll number
+        user_obj = db.query(User).filter(User.roll_number == roll).first()
+        email_addr = user_obj.email if user_obj else f"{roll.lower()}@hitam.org"
+        
+        try:
+            orig_data = parse_roll_number(email_addr)
+            orig_joining = orig_data["joining_year"]
+            orig_grad = orig_data["graduation_year"]
+            orig_batch = f"{orig_joining}-{orig_grad}"
+        except Exception:
+            # Fallback based on typical roll number digits if parsing fails
+            orig_joining = 2024
+            if len(roll) == 10:
+                try:
+                    orig_joining = 2000 + int(roll[0:2])
+                except Exception:
+                    pass
+            orig_grad = orig_joining + 4
+            orig_batch = f"{orig_joining}-{orig_grad}"
+            
+        if user_obj:
+            user_obj.joining_year = orig_joining
+            user_obj.graduation_year = orig_grad
+            
+        # Restore CDCPerformance records if exist
+        db.query(CDCPerformance).filter(CDCPerformance.roll_number == roll).update(
+            {"batch_year": orig_batch}, synchronize_session=False
+        )
+        
+        # Restore FinalisedTrack records if exist
+        db.query(FinalisedTrack).filter(FinalisedTrack.roll_number == roll).update(
+            {"batch_year": orig_batch}, synchronize_session=False
+        )
+        
+        # Restore TrackSelectionHistory records if exist
+        db.query(TrackSelectionHistory).filter(TrackSelectionHistory.roll_number == roll).update(
+            {"batch_year": orig_batch}, synchronize_session=False
+        )
+        
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to remove detained student: {str(e)}")
+        
+    return {"message": f"Student {roll} has been removed from detained status. Original batch {orig_batch} restored."}
