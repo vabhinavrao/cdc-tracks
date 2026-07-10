@@ -639,13 +639,17 @@ def sync_google_sheet_connection(db: Session, connection_id: int, credentials_pa
                 BAND_CANDIDATES = ["cdc band", "band"]
                 band_col = find_matching_header(headers, BAND_CANDIDATES)
             
-            # CIE columns - find all headers containing "cie"
-            cie_cols = [h for h in headers if "cie" in h.lower()]
+            cie_col = mappings.get("cie_score") if mappings.get("cie_score") in headers else None
+            cie_cols = []
+            if not cie_col:
+                # CIE columns - find all headers containing "cie"
+                cie_cols = [h for h in headers if "cie" in h.lower()]
             
             # Mapped columns to ignore when scanning for test scores
             mapped_cols = {roll_col, name_col, branch_col, email_col, mobile_col, 
-                           participation_col, consistency_col, avg_perf_col, grade_col, rank_col, band_col}
-            mapped_cols.update(cie_cols)
+                           participation_col, consistency_col, avg_perf_col, grade_col, rank_col, band_col, cie_col}
+            if not cie_col:
+                mapped_cols.update(cie_cols)
             mapped_cols = {c for c in mapped_cols if c is not None}
             
             for row in records:
@@ -691,13 +695,16 @@ def sync_google_sheet_connection(db: Session, connection_id: int, credentials_pa
                 if band_col:
                     cdc_obj.cdc_band = str(clean_sheet_value(row.get(band_col)) or "D").upper()
                     
-                # CIE Score: Rightmost non-empty CIE score
+                # CIE Score: prioritized from mapped column or fallback to rightmost non-empty CIE score
                 cie_val = None
-                for col in reversed(cie_cols):
-                    val = clean_sheet_value(row.get(col))
-                    if val is not None and val != "":
-                        cie_val = val
-                        break
+                if cie_col:
+                    cie_val = clean_sheet_value(row.get(cie_col))
+                else:
+                    for col in reversed(cie_cols):
+                        val = clean_sheet_value(row.get(col))
+                        if val is not None and val != "":
+                            cie_val = val
+                            break
                 if cie_val is not None:
                     try:
                         cdc_obj.cie_score = math.ceil(float(cie_val) * 2) / 2

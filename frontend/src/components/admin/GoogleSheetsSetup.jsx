@@ -49,7 +49,8 @@ const GoogleSheetsSetup = ({ user }) => {
     avg_performance: { label: "Avg Performance", desc: "Average test performance", required: false },
     cdc_grade_score: { label: "CDC Grade Score", desc: "Final placement eligibility grade", required: false },
     cdc_rank: { label: "CDC Rank", desc: "Cohort rank number", required: false },
-    cdc_band: { label: "CDC Band", desc: "CDC Band rating (A, B, C, D)", required: false }
+    cdc_band: { label: "CDC Band", desc: "CDC Band rating (A, B, C, D)", required: false },
+    cie_score: { label: "CIE Score (CIE/5)", desc: "CIE mark (e.g. out of 5)", required: false }
   };
 
   const DB_FIELDS_DOMAIN = {

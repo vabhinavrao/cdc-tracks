@@ -1351,8 +1351,18 @@ def analyze_google_sheet_endpoint(
         all_values = wks.get_all_values(value_render_option='FORMATTED_VALUE')
         if not all_values:
             raise HTTPException(status_code=400, detail="No data found in the first sheet of the spreadsheet.")
-            
-        headers = [str(h).replace("\n", " ").strip() for h in all_values[0]]
+        raw_headers = all_values[0] if all_values else []
+        seen = {}
+        headers = []
+        for h in raw_headers:
+            h_clean = str(h).replace("\n", " ").strip()
+            if h_clean in seen:
+                seen[h_clean] += 1
+                headers.append(f"{h_clean}_{seen[h_clean]}")
+            else:
+                seen[h_clean] = 1
+                headers.append(h_clean)
+
         sample_rows = all_values[1:6]  # Up to 5 rows
         
         from app.services.ai_mapper import analyze_sheet_headers_with_ai

@@ -20,7 +20,8 @@ DB_FIELDS_OVERALL = {
     "avg_performance": "Average performance / midscore.",
     "cdc_grade_score": "Grade score assigned by CDC.",
     "cdc_rank": "Rank of the student.",
-    "cdc_band": "Performance band (A, B, C, D) of the student."
+    "cdc_band": "Performance band (A, B, C, D) of the student.",
+    "cie_score": "CIE Score column (e.g. CIE/5)."
 }
 
 # Standard database columns for domain_info sheets
@@ -187,6 +188,7 @@ def generate_rule_based_mappings(headers: List[str], sample_rows: List[List[Any]
         mappings["cdc_grade_score"] = find_match(["cdc grade score", "grade score", "cdc_grade_score"])
         mappings["cdc_rank"] = find_match(["cdc rank", "rank"])
         mappings["cdc_band"] = find_match(["cdc band", "band"])
+        mappings["cie_score"] = find_match(["cie/5", "cie score", "cie"])
         
         # Gather test columns
         for h in headers:
