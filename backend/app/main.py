@@ -53,7 +53,7 @@ def startup_event():
         except Exception:
             db.rollback()
 
-    cdc_cols = ["status VARCHAR DEFAULT 'active'"]
+    cdc_cols = ["status VARCHAR DEFAULT 'active'", "projects JSON", "finalised_domains JSON"]
     for col_def in cdc_cols:
         try:
             from sqlalchemy import text

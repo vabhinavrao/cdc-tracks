@@ -1225,8 +1225,8 @@ def add_google_sheet_connection(
     db: Session = Depends(get_db)
 ):
     sheet_type = payload.sheet_type.strip().lower()
-    if sheet_type not in ["overall_marks", "domain_info"]:
-        raise HTTPException(status_code=400, detail="sheet_type must be either 'overall_marks' or 'domain_info'")
+    if sheet_type not in ["overall_marks", "domain_info", "semester_projects", "finalised_domains"]:
+        raise HTTPException(status_code=400, detail="sheet_type must be overall_marks, domain_info, semester_projects, or finalised_domains")
 
     new_conn = GoogleSheetConnection(
         batch_year=payload.batch_year.strip(),
@@ -1257,8 +1257,8 @@ def update_google_sheet_connection(
         raise HTTPException(status_code=404, detail="Connection not found")
 
     sheet_type = payload.sheet_type.strip().lower()
-    if sheet_type not in ["overall_marks", "domain_info"]:
-        raise HTTPException(status_code=400, detail="sheet_type must be either 'overall_marks' or 'domain_info'")
+    if sheet_type not in ["overall_marks", "domain_info", "semester_projects", "finalised_domains"]:
+        raise HTTPException(status_code=400, detail="sheet_type must be overall_marks, domain_info, semester_projects, or finalised_domains")
 
     conn.batch_year = payload.batch_year.strip()
     conn.academic_year = payload.academic_year

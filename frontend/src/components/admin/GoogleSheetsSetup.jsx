@@ -59,7 +59,25 @@ const GoogleSheetsSetup = ({ user }) => {
     branch: { label: "Branch", desc: "Academic branch (e.g. CSE)", required: false },
     email: { label: "Email Address", desc: "Student email ID", required: false }
   };
+  const DB_FIELDS_PROJECTS = {
+    roll_number: { label: "Roll Number / Reg ID", desc: "Unique student identifier", required: true },
+    name: { label: "Student Name", desc: "Full name", required: false },
+    branch: { label: "Branch", desc: "Academic branch (e.g. CSE)", required: false },
+    email: { label: "Email Address", desc: "Student email ID", required: false },
+    mobile: { label: "Phone Number", desc: "Contact mobile number", required: false },
+    project_title: { label: "Project Title", desc: "Project topic / title", required: true },
+    faculty_guide: { label: "Faculty Guide / Mentor", desc: "Project guide's name", required: false },
+    technologies: { label: "Technologies Used", desc: "Stack (e.g. React, Node)", required: false }
+  };
 
+  const DB_FIELDS_FINALISED = {
+    roll_number: { label: "Roll Number / Reg ID", desc: "Unique student identifier", required: true },
+    name: { label: "Student Name", desc: "Full name", required: false },
+    branch: { label: "Branch", desc: "Academic branch (e.g. CSE)", required: false },
+    email: { label: "Email Address", desc: "Student email ID", required: false },
+    mobile: { label: "Phone Number", desc: "Contact mobile number", required: false },
+    finalised_domain: { label: "Finalised Domain / Track", desc: "Final track selected for student", required: true }
+  };
   useEffect(() => {
     fetchConnections();
     fetchBatches();
@@ -333,7 +351,49 @@ const GoogleSheetsSetup = ({ user }) => {
     }
   };
 
-  const targetFields = formData.sheet_type === 'overall_marks' ? DB_FIELDS_OVERALL : DB_FIELDS_DOMAIN;
+  const getSheetTypeBadge = (type) => {
+    switch (type) {
+      case 'overall_marks':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-purple-50 text-purple-700 border border-purple-200 rounded-full text-xs font-bold font-black uppercase tracking-wider">
+            <BookOpen size={12} /> Overall Marks
+          </span>
+        );
+      case 'domain_info':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-full text-xs font-bold font-black uppercase tracking-wider">
+            <Calendar size={12} /> Domain Info
+          </span>
+        );
+      case 'semester_projects':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded-full text-xs font-bold font-black uppercase tracking-wider">
+            <Database size={12} /> Semester Projects
+          </span>
+        );
+      case 'finalised_domains':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full text-xs font-bold font-black uppercase tracking-wider">
+            <CheckCircle2 size={12} /> Finalised Domains
+          </span>
+        );
+      default:
+        return (
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-slate-50 text-slate-700 border border-slate-200 rounded-full text-xs font-bold">
+            {type}
+          </span>
+        );
+    }
+  };
+
+  let targetFields = DB_FIELDS_DOMAIN;
+  if (formData.sheet_type === 'overall_marks') {
+    targetFields = DB_FIELDS_OVERALL;
+  } else if (formData.sheet_type === 'semester_projects') {
+    targetFields = DB_FIELDS_PROJECTS;
+  } else if (formData.sheet_type === 'finalised_domains') {
+    targetFields = DB_FIELDS_FINALISED;
+  }
 
   return (
     <div className="space-y-6">
@@ -439,14 +499,7 @@ const GoogleSheetsSetup = ({ user }) => {
                       </div>
                     </td>
                     <td className="py-4 px-6">
-                      <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border ${
-                        conn.sheet_type === 'overall_marks'
-                          ? 'bg-purple-50 text-purple-700 border-purple-200'
-                          : 'bg-amber-50 text-amber-700 border-amber-200'
-                      }`}>
-                        {conn.sheet_type === 'overall_marks' ? <BookOpen size={12} /> : <Calendar size={12} />}
-                        {conn.sheet_type === 'overall_marks' ? 'Overall Marks' : 'Domain Info'}
-                      </span>
+                      {getSheetTypeBadge(conn.sheet_type)}
                     </td>
                     <td className="py-4 px-6 max-w-xs">
                       <div className="flex items-center gap-1.5">
@@ -637,6 +690,30 @@ const GoogleSheetsSetup = ({ user }) => {
                   >
                     <Calendar size={16} />
                     <span>Domain Info Selections</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFormData(prev => ({ ...prev, sheet_type: 'semester_projects' }))}
+                    className={`p-3 rounded-xl border flex items-center gap-2 text-xs font-bold cursor-pointer transition-all ${
+                      formData.sheet_type === 'semester_projects'
+                        ? 'border-blue-600 bg-blue-50/50 text-blue-700 font-extrabold shadow-sm'
+                        : 'border-slate-200 hover:bg-slate-50 text-slate-500'
+                    }`}
+                  >
+                    <Database size={16} />
+                    <span>Semester Projects</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFormData(prev => ({ ...prev, sheet_type: 'finalised_domains' }))}
+                    className={`p-3 rounded-xl border flex items-center gap-2 text-xs font-bold cursor-pointer transition-all ${
+                      formData.sheet_type === 'finalised_domains'
+                        ? 'border-emerald-600 bg-emerald-50/50 text-emerald-700 font-extrabold shadow-sm'
+                        : 'border-slate-200 hover:bg-slate-50 text-slate-500'
+                    }`}
+                  >
+                    <CheckCircle2 size={16} />
+                    <span>Finalised Domains</span>
                   </button>
                 </div>
               </div>

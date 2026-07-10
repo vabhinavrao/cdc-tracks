@@ -68,6 +68,8 @@ class CDCPerformance(Base):
     test_scores = Column(JSON, default=dict)       # e.g. {"Test 1": 80.0, ...}
     post_assessments = Column(JSON, default=dict)  # e.g. {"Post Assessment II-I": 82.86, ...}
     domain_tracks = Column(JSON, default=dict)     # e.g. {"I-II": {"domain": "Aptitude and Reasoning", "performance": 60}, ...}
+    projects = Column(JSON, default=dict)          # e.g. {"I-II": {"title": "Weather App", "faculty_guide": "Dr. Raman", "technologies": "React, CSS"}, ...}
+    finalised_domains = Column(JSON, default=dict) # e.g. {"I-II": "CSE", "II-I": "CSE AI/ML"}
 
     student_user = relationship(
         "User",
