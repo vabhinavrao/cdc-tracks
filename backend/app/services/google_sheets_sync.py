@@ -863,8 +863,11 @@ def sync_google_sheet_connection(db: Session, connection_id: int, credentials_pa
                     cdc_obj.mobile = str(row.get(mobile_col)).strip()
                     
                 # Semester context
-                sem_col = find_matching_header(headers, ["semester", "sem"])
-                sem_val = str(row.get(sem_col)).strip() if (sem_col and row.get(sem_col)) else f"Year-{connection.academic_year}"
+                if connection.semester:
+                    sem_val = connection.semester
+                else:
+                    sem_col = find_matching_header(headers, ["semester", "sem"])
+                    sem_val = str(row.get(sem_col)).strip() if (sem_col and row.get(sem_col)) else f"Year-{connection.academic_year}"
                 
                 # Load existing projects list/dict and update
                 existing_projects = dict(cdc_obj.projects or {})
@@ -965,7 +968,10 @@ def sync_google_sheet_connection(db: Session, connection_id: int, credentials_pa
                         if wks_mobile_col and row.get(wks_mobile_col):
                             cdc_obj.mobile = str(row.get(wks_mobile_col)).strip()
                             
-                        sem_val = str(row.get(wks_sem_col)).strip() if (wks_sem_col and row.get(wks_sem_col)) else f"Year-{connection.academic_year}"
+                        if connection.semester:
+                            sem_val = connection.semester
+                        else:
+                            sem_val = str(row.get(wks_sem_col)).strip() if (wks_sem_col and row.get(wks_sem_col)) else f"Year-{connection.academic_year}"
                         
                         existing_finalised = dict(cdc_obj.finalised_domains or {})
                         existing_finalised[sem_val] = track_val
@@ -1028,8 +1034,11 @@ def sync_google_sheet_connection(db: Session, connection_id: int, credentials_pa
                         cdc_obj.mobile = str(row.get(mobile_col)).strip()
                         
                     # Semester context
-                    sem_col = find_matching_header(headers, ["semester", "sem"])
-                    sem_val = str(row.get(sem_col)).strip() if (sem_col and row.get(sem_col)) else f"Year-{connection.academic_year}"
+                    if connection.semester:
+                        sem_val = connection.semester
+                    else:
+                        sem_col = find_matching_header(headers, ["semester", "sem"])
+                        sem_val = str(row.get(sem_col)).strip() if (sem_col and row.get(sem_col)) else f"Year-{connection.academic_year}"
                     
                     # Load existing domains list/dict and update
                     existing_finalised = dict(cdc_obj.finalised_domains or {})

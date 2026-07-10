@@ -78,6 +78,33 @@ const GoogleSheetsSetup = ({ user }) => {
     mobile: { label: "Phone Number", desc: "Contact mobile number", required: false },
     finalised_domain: { label: "Finalised Domain / Track", desc: "Final track selected for student", required: true }
   };
+  const getSemesterOptions = (year) => {
+    switch (year) {
+      case 1:
+        return [
+          { value: "I-I", label: "Semester I-I" },
+          { value: "I-II", label: "Semester I-II" }
+        ];
+      case 2:
+        return [
+          { value: "II-I", label: "Semester II-I" },
+          { value: "II-II", label: "Semester II-II" }
+        ];
+      case 3:
+        return [
+          { value: "III-I", label: "Semester III-I" },
+          { value: "III-II", label: "Semester III-II" }
+        ];
+      case 4:
+        return [
+          { value: "IV-I", label: "Semester IV-I" },
+          { value: "IV-II", label: "Semester IV-II" }
+        ];
+      default:
+        return [];
+    }
+  };
+
   useEffect(() => {
     fetchConnections();
     fetchBatches();
@@ -121,7 +148,8 @@ const GoogleSheetsSetup = ({ user }) => {
       batch_year: batches.length > 0 ? batches[0].batch_year : '2024-2028',
       academic_year: 1,
       sheet_type: 'overall_marks',
-      sheet_url: ''
+      sheet_url: '',
+      semester: ''
     });
     setSheetHeaders([]);
     setColumnMappings({});
@@ -139,7 +167,8 @@ const GoogleSheetsSetup = ({ user }) => {
       batch_year: conn.batch_year,
       academic_year: conn.academic_year,
       sheet_type: conn.sheet_type,
-      sheet_url: conn.sheet_url
+      sheet_url: conn.sheet_url,
+      semester: conn.semester || ''
     });
     
     // Extract existing mappings
@@ -362,7 +391,7 @@ const GoogleSheetsSetup = ({ user }) => {
       case 'domain_info':
         return (
           <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-full text-xs font-bold font-black uppercase tracking-wider">
-            <Calendar size={12} /> Domain Info
+            <Calendar size={12} /> Domain Specific Performance
           </span>
         );
       case 'semester_projects':
@@ -598,7 +627,7 @@ const GoogleSheetsSetup = ({ user }) => {
             <form onSubmit={handleSubmit} className="p-6 space-y-5 text-left overflow-y-auto flex-1">
               
               {/* Batch & Academic Year Selectors */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className={`grid ${formData.sheet_type === 'semester_projects' || formData.sheet_type === 'finalised_domains' ? 'grid-cols-3' : 'grid-cols-2'} gap-4`}>
                 <div>
                   <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2">Target Student Batch</label>
                   <select
@@ -623,7 +652,11 @@ const GoogleSheetsSetup = ({ user }) => {
                   <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2">Academic Year</label>
                   <select
                     value={formData.academic_year}
-                    onChange={(e) => setFormData(prev => ({ ...prev, academic_year: parseInt(e.target.value) }))}
+                    onChange={(e) => setFormData(prev => ({ 
+                      ...prev, 
+                      academic_year: parseInt(e.target.value),
+                      semester: '' // Reset semester to default dynamic auto-detect on year change
+                    }))}
                     className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 font-bold focus:outline-none focus:ring-2 focus:ring-blue-500/20 bg-white text-xs"
                     required
                   >
@@ -633,6 +666,22 @@ const GoogleSheetsSetup = ({ user }) => {
                     <option value={4}>4th Year (Senior)</option>
                   </select>
                 </div>
+                {(formData.sheet_type === 'semester_projects' || formData.sheet_type === 'finalised_domains') && (
+                  <div>
+                    <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2">Target Semester</label>
+                    <select
+                      value={formData.semester}
+                      onChange={(e) => setFormData(prev => ({ ...prev, semester: e.target.value }))}
+                      className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 font-bold focus:outline-none focus:ring-2 focus:ring-blue-500/20 bg-white text-xs"
+                      required
+                    >
+                      <option value="">Dynamic (Auto Detect)</option>
+                      {getSemesterOptions(formData.academic_year).map(opt => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
 
               {/* Sheet URL/ID & AI analysis trigger */}
@@ -689,7 +738,7 @@ const GoogleSheetsSetup = ({ user }) => {
                     }`}
                   >
                     <Calendar size={16} />
-                    <span>Domain Info Selections</span>
+                    <span>Domain Specific Performance</span>
                   </button>
                   <button
                     type="button"

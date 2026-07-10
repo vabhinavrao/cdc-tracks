@@ -1191,6 +1191,7 @@ class GoogleSheetConnectionRequest(BaseModel):
     sheet_type: str  # "overall_marks" or "domain_info"
     sheet_url: str
     column_mappings: Optional[dict] = None
+    semester: Optional[str] = None
 
 class GoogleSheetAnalyzeRequest(BaseModel):
     sheet_url: str
@@ -1214,7 +1215,8 @@ def get_google_sheet_connections(
             "last_synced": c.last_synced.isoformat() if c.last_synced else None,
             "sync_status": c.sync_status,
             "sync_message": c.sync_message,
-            "column_mappings": c.column_mappings
+            "column_mappings": c.column_mappings,
+            "semester": c.semester
         })
     return res
 
@@ -1233,7 +1235,8 @@ def add_google_sheet_connection(
         academic_year=payload.academic_year,
         sheet_type=sheet_type,
         sheet_url=payload.sheet_url.strip(),
-        column_mappings=payload.column_mappings or {}
+        column_mappings=payload.column_mappings or {},
+        semester=payload.semester.strip() if payload.semester else None
     )
     db.add(new_conn)
     try:
@@ -1264,6 +1267,7 @@ def update_google_sheet_connection(
     conn.academic_year = payload.academic_year
     conn.sheet_type = sheet_type
     conn.sheet_url = payload.sheet_url.strip()
+    conn.semester = payload.semester.strip() if payload.semester else None
     if payload.column_mappings is not None:
         conn.column_mappings = payload.column_mappings
 

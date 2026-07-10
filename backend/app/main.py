@@ -71,7 +71,7 @@ def startup_event():
         except Exception:
             db.rollback()
 
-    conn_cols = ["test_mappings JSON", "column_mappings JSON"]
+    conn_cols = ["test_mappings JSON", "column_mappings JSON", "semester VARCHAR"]
     for col_def in conn_cols:
         try:
             from sqlalchemy import text

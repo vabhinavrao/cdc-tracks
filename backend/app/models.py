@@ -230,6 +230,7 @@ class GoogleSheetConnection(Base):
     sync_message = Column(String, nullable=True)
     test_mappings = Column(JSON, default=dict, nullable=True)
     column_mappings = Column(JSON, default=dict, nullable=True)
+    semester = Column(String, nullable=True)
 
 
 class DetainedStudent(Base):
