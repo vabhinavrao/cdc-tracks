@@ -82,6 +82,46 @@ def calculate_current_year(joining_year: int) -> int:
     # Standard engineering courses are 4 years, cap it between 1 and 4.
     return max(1, min(4, current_year))
 
+BASE_BRANCH_CODES = {"CSE", "CSM", "CSD", "ECE", "EEE", "MECH"}
+
+def normalize_branch(raw):
+    """
+    Normalizes a branch value so section-split sheets ("CSE A", "CSM B", "CSD C")
+    collapse to the base branch code ("CSE", "CSM", "CSD") that the rest of the
+    app filters and ranks on. Multi-word program names such as "CSE AI/ML" or
+    "CSE Data Science" are left intact (they don't end in a single-char section).
+    """
+    if raw is None:
+        return raw
+    b = str(raw).strip()
+    if not b:
+        return b
+    parts = b.split()
+    if (
+        len(parts) == 2
+        and parts[0].upper() in BASE_BRANCH_CODES
+        and len(parts[1]) == 1
+        and parts[1].isalnum()
+    ):
+        return parts[0].upper()
+    return b
+
+def parse_batch_from_roll(roll):
+    """
+    Derives (joining_year, graduation_year) from a standard 10-char JNTU roll
+    number. Position 5 is the admission-type digit: '5' = Lateral Entry (joins
+    directly into 2nd year, so joining = year-1, grad = year+3); anything else is
+    treated as a 4-year Regular programme. Returns None for non-standard rolls
+    (e.g. staff/admin pseudo-roll numbers).
+    """
+    roll = (roll or "").strip().upper()
+    if len(roll) < 5 or not roll[0:2].isdigit() or not roll[4].isdigit():
+        return None
+    raw_year = 2000 + int(roll[0:2])
+    if roll[4] == '5':
+        return (raw_year - 1, raw_year + 3)
+    return (raw_year, raw_year + 4)
+
 DOMAIN_TO_TRACK_ID = {
     "Data Analyst / Data Scientist / AI/ML Engineer": "data-analyst-data-scientist-ai-ml-engineer",
     "Full Stack Developer": "full-stack-developer",

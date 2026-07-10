@@ -14,19 +14,8 @@ router = APIRouter(prefix="/api/student", tags=["Student Profile & Tracks"])
 
 # Helper dependency to authenticate/retrieve user by Authorization header
 def get_current_user(authorization: Optional[str] = Header(None), db: Session = Depends(get_db)) -> User:
-    if not authorization:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing Authorization header"
-        )
-    
-    # Expect "Bearer <email>" or just "<email>"
-    email = authorization
-    if authorization.startswith("Bearer "):
-        email = authorization.split(" ")[1]
-        
-    email = email.strip().lower()
-    
+    from app.security import bearer_token, decode_session_token
+    email = decode_session_token(bearer_token(authorization))
     user = db.query(User).filter(User.email == email).first()
     if not user:
         raise HTTPException(

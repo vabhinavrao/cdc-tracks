@@ -4,8 +4,18 @@ import json
 import logging
 from sqlalchemy.orm import Session
 from app.models import CDCPerformance, User
+from app.utils import normalize_branch, parse_batch_from_roll
 
 logger = logging.getLogger("cdc_sync")
+
+def resolve_batch_year(db, roll, fallback=None):
+    """
+    The college's sheet is authoritative for batch assignment — it already places
+    lateral-entry students and detained students in the correct batch's sheet — so
+    the batch always comes from the sheet (the ``fallback`` the caller passes in).
+    Kept as a single choke point so the policy lives in one place.
+    """
+    return fallback
 
 def clean_sheet_value(val):
     """
@@ -133,7 +143,7 @@ def fetch_sheet_records(wks):
         records.append(row_dict)
     return records
 
-def ensure_student_user(db: Session, roll: str, row: dict, name_col: str = None, branch_col: str = None, email_col: str = None, batch_year: str = None):
+def ensure_student_user(db: Session, roll: str, row: dict, name_col: str = None, branch_col: str = None, email_col: str = None, batch_year: str = None, flag_detentions: bool = True):
     """
     Checks if a student user profile exists for the given roll number.
     If not, creates it using parsed roll details or row details.
@@ -179,6 +189,8 @@ def ensure_student_user(db: Session, roll: str, row: dict, name_col: str = None,
                 branch_val = str(row.get(cand)).strip()
                 break
 
+    branch_val = normalize_branch(branch_val)
+
     # Parse JNTU Roll details
     joining_year = 2024
     graduation_year = 2028
@@ -215,25 +227,25 @@ def ensure_student_user(db: Session, roll: str, row: dict, name_col: str = None,
         except Exception:
             pass
 
-    # Detained check: if regular student is synced under a batch starting after their default joining year
-    if admission_type == "Regular" and batch_year:
-        try:
-            parts = batch_year.split("-")
-            if len(parts) == 2:
-                sheet_start_year = int(parts[0])
-                if sheet_start_year > joining_year:
-                    # Automatically register as detained in DetainedStudent table
+    # Detained detection: a student whose roll-number cohort is EARLIER than the
+    # sheet's batch has been held back into a later batch (the college places them
+    # in that later batch's sheet). Record it so the login side can resolve their
+    # correct batch. Idempotent — a clean re-sync reasserts the same record — and
+    # it rides the sync's own transaction (no per-row commit).
+    if flag_detentions and batch_year:
+        roll_years = parse_batch_from_roll(roll)
+        if roll_years:
+            try:
+                sheet_start = int(str(batch_year).split("-")[0])
+                if sheet_start > roll_years[0]:
                     from app.models import DetainedStudent
-                    det_entry = db.query(DetainedStudent).filter(DetainedStudent.roll_number == roll).first()
-                    if not det_entry:
-                        det_entry = DetainedStudent(roll_number=roll, detained_to_batch=batch_year)
-                        db.add(det_entry)
-                    else:
-                        det_entry.detained_to_batch = batch_year
-                    db.commit()
-        except Exception as e_det:
-            logger.warning(f"Error auto-registering detained student {roll}: {e_det}")
-            db.rollback()
+                    det = db.query(DetainedStudent).filter(DetainedStudent.roll_number == roll).first()
+                    if not det:
+                        db.add(DetainedStudent(roll_number=roll, detained_to_batch=batch_year))
+                    elif det.detained_to_batch != batch_year:
+                        det.detained_to_batch = batch_year
+            except (ValueError, IndexError):
+                pass
 
     # Look up if student is registered as detained in DetainedStudent table
     from app.models import DetainedStudent
@@ -451,15 +463,15 @@ def sync_live_google_sheets(db: Session, sheet1_id_or_url: str, sheet2_id_or_url
             if not cdc_obj:
                 cdc_obj = CDCPerformance(
                     roll_number=roll, 
-                    batch_year=batch_year, 
+                    batch_year=resolve_batch_year(db, roll, batch_year),
                     academic_year=academic_year
                 )
                 db.add(cdc_obj)
             else:
-                cdc_obj.batch_year = batch_year
+                cdc_obj.batch_year = resolve_batch_year(db, roll, batch_year)
 
             cdc_obj.name = str(row.get("Name") or "")
-            cdc_obj.branch = str(row.get("Branch") or "")
+            cdc_obj.branch = normalize_branch(str(row.get("Branch") or ""))
             cdc_obj.email = str(row.get("Mail ID") or row.get("Email") or "")
             cdc_obj.mobile = str(row.get("Mobile Number") or "")
             cdc_obj.participation = clean_sheet_value(row.get("Participation")) or 0
@@ -730,18 +742,18 @@ def sync_google_sheet_connection(db: Session, connection_id: int, credentials_pa
                 if not cdc_obj:
                     cdc_obj = CDCPerformance(
                         roll_number=roll, 
-                        batch_year=connection.batch_year,
+                        batch_year=resolve_batch_year(db, roll, connection.batch_year),
                         academic_year=connection.academic_year
                     )
                     db.add(cdc_obj)
                 else:
-                    cdc_obj.batch_year = connection.batch_year
+                    cdc_obj.batch_year = resolve_batch_year(db, roll, connection.batch_year)
                     
                 # Dynamic basic info update
                 if name_col and row.get(name_col):
                     cdc_obj.name = str(row.get(name_col)).strip()
                 if branch_col and row.get(branch_col):
-                    cdc_obj.branch = str(row.get(branch_col)).strip()
+                    cdc_obj.branch = normalize_branch(str(row.get(branch_col)).strip())
                 if email_col and row.get(email_col):
                     cdc_obj.email = str(row.get(email_col)).strip()
                 if mobile_col and row.get(mobile_col):
@@ -857,18 +869,18 @@ def sync_google_sheet_connection(db: Session, connection_id: int, credentials_pa
                 if not cdc_obj:
                     cdc_obj = CDCPerformance(
                         roll_number=roll, 
-                        batch_year=connection.batch_year,
+                        batch_year=resolve_batch_year(db, roll, connection.batch_year),
                         academic_year=connection.academic_year
                     )
                     db.add(cdc_obj)
                 else:
-                    cdc_obj.batch_year = connection.batch_year
+                    cdc_obj.batch_year = resolve_batch_year(db, roll, connection.batch_year)
                     
                 # Dynamic basic info update
                 if name_col and row.get(name_col):
                     cdc_obj.name = str(row.get(name_col)).strip()
                 if branch_col and row.get(branch_col):
-                    cdc_obj.branch = str(row.get(branch_col)).strip()
+                    cdc_obj.branch = normalize_branch(str(row.get(branch_col)).strip())
                 if email_col and row.get(email_col):
                     cdc_obj.email = str(row.get(email_col)).strip()
                     
@@ -911,18 +923,18 @@ def sync_google_sheet_connection(db: Session, connection_id: int, credentials_pa
                 if not cdc_obj:
                     cdc_obj = CDCPerformance(
                         roll_number=roll, 
-                        batch_year=connection.batch_year,
+                        batch_year=resolve_batch_year(db, roll, connection.batch_year),
                         academic_year=connection.academic_year
                     )
                     db.add(cdc_obj)
                 else:
-                    cdc_obj.batch_year = connection.batch_year
+                    cdc_obj.batch_year = resolve_batch_year(db, roll, connection.batch_year)
                     
                 # Dynamic basic info update
                 if name_col and row.get(name_col):
                     cdc_obj.name = str(row.get(name_col)).strip()
                 if branch_col and row.get(branch_col):
-                    cdc_obj.branch = str(row.get(branch_col)).strip()
+                    cdc_obj.branch = normalize_branch(str(row.get(branch_col)).strip())
                 if email_col and row.get(email_col):
                     cdc_obj.email = str(row.get(email_col)).strip()
                 if mobile_col and row.get(mobile_col):
@@ -1025,18 +1037,18 @@ def sync_google_sheet_connection(db: Session, connection_id: int, credentials_pa
                         if not cdc_obj:
                             cdc_obj = CDCPerformance(
                                 roll_number=roll, 
-                                batch_year=connection.batch_year,
+                                batch_year=resolve_batch_year(db, roll, connection.batch_year),
                                 academic_year=connection.academic_year
                             )
                             db.add(cdc_obj)
                         else:
-                            cdc_obj.batch_year = connection.batch_year
+                            cdc_obj.batch_year = resolve_batch_year(db, roll, connection.batch_year)
                             
                         # Update basic info
                         if wks_name_col and row.get(wks_name_col):
                             cdc_obj.name = str(row.get(wks_name_col)).strip()
                         if wks_branch_col and row.get(wks_branch_col):
-                            cdc_obj.branch = str(row.get(wks_branch_col)).strip()
+                            cdc_obj.branch = normalize_branch(str(row.get(wks_branch_col)).strip())
                         if wks_email_col and row.get(wks_email_col):
                             cdc_obj.email = str(row.get(wks_email_col)).strip()
                         if wks_mobile_col and row.get(wks_mobile_col):
@@ -1062,7 +1074,7 @@ def sync_google_sheet_connection(db: Session, connection_id: int, credentials_pa
                         if not final_track:
                             final_track = FinalisedTrack(
                                 roll_number=roll,
-                                batch_year=connection.batch_year,
+                                batch_year=resolve_batch_year(db, roll, connection.batch_year),
                                 academic_year=connection.academic_year,
                                 semester=sem_val,
                                 track_id=resolved_track
@@ -1091,18 +1103,18 @@ def sync_google_sheet_connection(db: Session, connection_id: int, credentials_pa
                     if not cdc_obj:
                         cdc_obj = CDCPerformance(
                             roll_number=roll, 
-                            batch_year=connection.batch_year,
+                            batch_year=resolve_batch_year(db, roll, connection.batch_year),
                             academic_year=connection.academic_year
                         )
                         db.add(cdc_obj)
                     else:
-                        cdc_obj.batch_year = connection.batch_year
+                        cdc_obj.batch_year = resolve_batch_year(db, roll, connection.batch_year)
                         
                     # Dynamic basic info update
                     if name_col and row.get(name_col):
                         cdc_obj.name = str(row.get(name_col)).strip()
                     if branch_col and row.get(branch_col):
-                        cdc_obj.branch = str(row.get(branch_col)).strip()
+                        cdc_obj.branch = normalize_branch(str(row.get(branch_col)).strip())
                     if email_col and row.get(email_col):
                         cdc_obj.email = str(row.get(email_col)).strip()
                     if mobile_col and row.get(mobile_col):
@@ -1132,7 +1144,7 @@ def sync_google_sheet_connection(db: Session, connection_id: int, credentials_pa
                         if not final_track:
                             final_track = FinalisedTrack(
                                 roll_number=roll,
-                                batch_year=connection.batch_year,
+                                batch_year=resolve_batch_year(db, roll, connection.batch_year),
                                 academic_year=connection.academic_year,
                                 semester=sem_val,
                                 track_id=resolved_track

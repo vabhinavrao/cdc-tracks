@@ -17,19 +17,10 @@ router = APIRouter(prefix="/api/admin", tags=["Admin Dashboard & Analytics"])
 
 
 def get_current_admin(authorization: Optional[str] = Header(None), db: Session = Depends(get_db)) -> User:
-    if not authorization:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing Authorization header"
-        )
-    
-    email = authorization
-    if authorization.startswith("Bearer "):
-        email = authorization.split(" ")[1]
-        
-    email = email.strip().lower()
+    from app.security import bearer_token, decode_session_token
+    email = decode_session_token(bearer_token(authorization))
     user = db.query(User).filter(User.email == email).first()
-    
+
     if not user or user.role not in ["super_admin", "branch_admin", "principal", "director", "registrar", "dean.academics"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

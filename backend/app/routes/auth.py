@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from app.database import get_db
 from app.models import User, DetainedStudent
 from app.utils import parse_roll_number, get_auto_allocated_track_id
+from app.security import verify_google_credential, create_session_token, get_admin_emails
 
 router = APIRouter(prefix="/api/auth", tags=["Authentication"])
 
@@ -39,28 +40,39 @@ ADMIN_PREFIXES_BRANCH = {
 }
 
 class GoogleLoginRequest(BaseModel):
-    email: str
+    credential: Optional[str] = None  # Google Sign-In ID token (JWT)
     name: Optional[str] = None
     picture: Optional[str] = None
 
 @router.post("/google-login")
 def google_login(payload: GoogleLoginRequest, db: Session = Depends(get_db)):
-    email = payload.email.strip().lower()
-    
+    if not payload.credential:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Missing Google credential."
+        )
+
+    # Identity comes from the verified Google token — never from a client-supplied email.
+    claims = verify_google_credential(payload.credential)
+    email = claims["email"].strip().lower()
+    default_name = payload.name or claims.get("name")
+    picture = payload.picture or claims.get("picture")
+
     email_parts = email.split('@')
     if len(email_parts) != 2:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid email format"
         )
-        
+
     prefix, domain = email_parts
-    
-    # Check if prefix matches an authorized Admin or Branch HOD prefix (allowing both @hitam.org and @gmail.com/etc.)
-    if prefix in ADMIN_PREFIXES_SUPER:
+    is_admin_email = email in get_admin_emails()
+
+    # Admin/HOD access requires the exact email to be on the server's ADMIN_EMAILS allow-list.
+    if is_admin_email and prefix in ADMIN_PREFIXES_SUPER:
         role = prefix if prefix in ["principal", "director", "registrar", "dean.academics"] else "super_admin"
         assigned_branch = None
-        default_name = payload.name or ADMIN_PREFIXES_SUPER[prefix]
+        default_name = default_name or ADMIN_PREFIXES_SUPER[prefix]
         parsed_data = {
             "roll_number": f"ADMIN-{prefix.upper()}",
             "joining_year": 2020,
@@ -68,11 +80,11 @@ def google_login(payload: GoogleLoginRequest, db: Session = Depends(get_db)):
             "admission_type": "Staff",
             "branch": "Management"
         }
-    elif prefix in ADMIN_PREFIXES_BRANCH:
+    elif is_admin_email and prefix in ADMIN_PREFIXES_BRANCH:
         role = "branch_admin"
         branch_code, hod_title = ADMIN_PREFIXES_BRANCH[prefix]
         assigned_branch = branch_code
-        default_name = payload.name or hod_title
+        default_name = default_name or hod_title
         parsed_data = {
             "roll_number": f"HOD-{branch_code}",
             "joining_year": 2020,
@@ -80,17 +92,28 @@ def google_login(payload: GoogleLoginRequest, db: Session = Depends(get_db)):
             "admission_type": "Faculty",
             "branch": branch_code
         }
+    elif is_admin_email:
+        # Allow-listed email without a recognised role prefix — grant full admin.
+        role = "super_admin"
+        assigned_branch = None
+        default_name = default_name or "Administrator"
+        parsed_data = {
+            "roll_number": f"ADMIN-{prefix.upper()}",
+            "joining_year": 2020,
+            "graduation_year": 2024,
+            "admission_type": "Staff",
+            "branch": "Management"
+        }
     else:
         # Standard Student Account - MUST be @hitam.org
         if domain != "hitam.org":
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Access restricted. Students must use @hitam.org email address."
+                detail="Access restricted. Students must use their @hitam.org email address."
             )
-            
+
         role = "student"
         assigned_branch = None
-        default_name = payload.name
         try:
             parsed_data = parse_roll_number(email)
             det_student = db.query(DetainedStudent).filter(DetainedStudent.roll_number == parsed_data["roll_number"]).first()
@@ -120,8 +143,8 @@ def google_login(payload: GoogleLoginRequest, db: Session = Depends(get_db)):
         user.assigned_branch = assigned_branch
         if default_name:
             user.name = default_name
-        if payload.picture:
-            user.picture = payload.picture
+        if picture:
+            user.picture = picture
     else:
         user = User(
             email=email,
@@ -131,7 +154,7 @@ def google_login(payload: GoogleLoginRequest, db: Session = Depends(get_db)):
             admission_type=parsed_data["admission_type"],
             branch=parsed_data["branch"],
             name=default_name,
-            picture=payload.picture,
+            picture=picture,
             selected_track_id=None,
             bookmarked_tracks=[],
             role=role,
@@ -163,7 +186,9 @@ def google_login(payload: GoogleLoginRequest, db: Session = Depends(get_db)):
             detail=f"Database error occurred: {str(e)}"
         )
         
+    token = create_session_token(user.email)
     return {
+        "token": token,
         "id": user.id,
         "email": user.email,
         "roll_number": user.roll_number,
