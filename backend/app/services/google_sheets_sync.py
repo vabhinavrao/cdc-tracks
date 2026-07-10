@@ -43,6 +43,45 @@ def extract_sheet_name_from_formula(formula):
         return match_unquoted.group(1).strip()
     return None
 
+def resolve_track_id(track_val: str, db) -> str:
+    if not track_val:
+        return None
+    val_clean = track_val.strip()
+    
+    # 1. Try direct lookup in DOMAIN_TO_TRACK_ID
+    from app.utils import DOMAIN_TO_TRACK_ID
+    if val_clean in DOMAIN_TO_TRACK_ID:
+        return DOMAIN_TO_TRACK_ID[val_clean]
+        
+    # 2. Try case-insensitive lookup
+    for k, v in DOMAIN_TO_TRACK_ID.items():
+        if k.lower().strip() == val_clean.lower():
+            return v
+            
+    # 3. Check if it matches any Track.id (slug) or Track.track_name in the database
+    from app.models import Track
+    track = db.query(Track).filter(
+        (Track.id == val_clean) | (Track.track_name == val_clean)
+    ).first()
+    if track:
+        return track.id
+        
+    # 4. Partial substring matching against DOMAIN_TO_TRACK_ID keys
+    val_norm = "".join(val_clean.lower().split())
+    for k, v in DOMAIN_TO_TRACK_ID.items():
+        k_norm = "".join(k.lower().split())
+        if val_norm in k_norm or k_norm in val_norm:
+            return v
+            
+    # 5. Partial substring matching against DB Track names
+    tracks = db.query(Track).all()
+    for t in tracks:
+        t_name_norm = "".join(t.track_name.lower().split())
+        if val_norm in t_name_norm or t_name_norm in val_norm:
+            return t.id
+            
+    return val_clean
+
 def fetch_sheet_records(wks):
     all_values = wks.get_all_values(value_render_option='FORMATTED_VALUE')
     if not all_values:
@@ -973,8 +1012,9 @@ def sync_google_sheet_connection(db: Session, connection_id: int, credentials_pa
                         else:
                             sem_val = str(row.get(wks_sem_col)).strip() if (wks_sem_col and row.get(wks_sem_col)) else f"Year-{connection.academic_year}"
                         
+                        resolved_track = resolve_track_id(track_val, db)
                         existing_finalised = dict(cdc_obj.finalised_domains or {})
-                        existing_finalised[sem_val] = track_val
+                        existing_finalised[sem_val] = resolved_track
                         cdc_obj.finalised_domains = existing_finalised
                         
                         # Also sync to finalised_tracks table
@@ -990,11 +1030,11 @@ def sync_google_sheet_connection(db: Session, connection_id: int, credentials_pa
                                 batch_year=connection.batch_year,
                                 academic_year=connection.academic_year,
                                 semester=sem_val,
-                                track_id=track_val
+                                track_id=resolved_track
                             )
                             db.add(final_track)
                         else:
-                            final_track.track_id = track_val
+                            final_track.track_id = resolved_track
                             
                         ensure_student_user(db, roll, row, name_col=wks_name_col, branch_col=wks_branch_col, email_col=wks_email_col, batch_year=connection.batch_year)
                         synced_count += 1
@@ -1044,7 +1084,8 @@ def sync_google_sheet_connection(db: Session, connection_id: int, credentials_pa
                     existing_finalised = dict(cdc_obj.finalised_domains or {})
                     if finalised_domain_col and row.get(finalised_domain_col):
                         track_val = str(row.get(finalised_domain_col)).strip()
-                        existing_finalised[sem_val] = track_val
+                        resolved_track = resolve_track_id(track_val, db)
+                        existing_finalised[sem_val] = resolved_track
                         
                         # Also sync directly to finalised_tracks table
                         from app.models import FinalisedTrack
@@ -1059,11 +1100,11 @@ def sync_google_sheet_connection(db: Session, connection_id: int, credentials_pa
                                 batch_year=connection.batch_year,
                                 academic_year=connection.academic_year,
                                 semester=sem_val,
-                                track_id=track_val
+                                track_id=resolved_track
                             )
                             db.add(final_track)
                         else:
-                            final_track.track_id = track_val
+                            final_track.track_id = resolved_track
                     
                     cdc_obj.finalised_domains = existing_finalised
                     ensure_student_user(db, roll, row, name_col=name_col, branch_col=branch_col, email_col=email_col, batch_year=connection.batch_year)

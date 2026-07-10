@@ -107,7 +107,14 @@ def get_auto_allocated_track_id(db, roll_number: str):
     # 1. Check FinalisedTrack
     fin = db.query(FinalisedTrack).filter(func.upper(FinalisedTrack.roll_number) == roll_clean).first()
     if fin and fin.track_id:
-        return fin.track_id
+        track_id_clean = fin.track_id.strip()
+        # Resolve if it is stored as a descriptive domain name instead of a slug
+        if track_id_clean in DOMAIN_TO_TRACK_ID:
+            return DOMAIN_TO_TRACK_ID[track_id_clean]
+        for k, v in DOMAIN_TO_TRACK_ID.items():
+            if k.lower().strip() == track_id_clean.lower():
+                return v
+        return track_id_clean
         
     # 2. Check CDCPerformance domain_tracks
     cdc = db.query(CDCPerformance).filter(
