@@ -580,38 +580,64 @@ def sync_google_sheet_connection(db: Session, connection_id: int, credentials_pa
                         return h
             return None
 
-        # Candidate mappings
-        ROLL_CANDIDATES = ["roll number", "roll no", "roll_number", "rollno", "roll"]
-        NAME_CANDIDATES = ["name", "student name", "studentname"]
-        BRANCH_CANDIDATES = ["branch"]
-        EMAIL_CANDIDATES = ["mail id", "email", "email id", "mail_id", "email_id"]
-        MOBILE_CANDIDATES = ["mobile number", "mobile", "phone number", "phone"]
+        # AI mappings check
+        mappings = connection.column_mappings or {}
         
-        roll_col = find_matching_header(headers, ROLL_CANDIDATES)
+        roll_col = mappings.get("roll_number") if mappings.get("roll_number") in headers else None
+        name_col = mappings.get("name") if mappings.get("name") in headers else None
+        branch_col = mappings.get("branch") if mappings.get("branch") in headers else None
+        email_col = mappings.get("email") if mappings.get("email") in headers else None
+        mobile_col = mappings.get("mobile") if mappings.get("mobile") in headers else None
+
+        # Fallback to rule-based matching if columns are not found or mappings are empty
+        if not roll_col:
+            ROLL_CANDIDATES = ["roll number", "roll no", "roll_number", "rollno", "roll"]
+            roll_col = find_matching_header(headers, ROLL_CANDIDATES)
         if not roll_col:
             raise Exception(f"Could not identify a 'Roll Number' column in the sheet. Available columns: {', '.join(headers[:10])}...")
             
-        name_col = find_matching_header(headers, NAME_CANDIDATES)
-        branch_col = find_matching_header(headers, BRANCH_CANDIDATES)
-        email_col = find_matching_header(headers, EMAIL_CANDIDATES)
-        mobile_col = find_matching_header(headers, MOBILE_CANDIDATES)
+        if not name_col:
+            NAME_CANDIDATES = ["name", "student name", "studentname"]
+            name_col = find_matching_header(headers, NAME_CANDIDATES)
+        if not branch_col:
+            BRANCH_CANDIDATES = ["branch"]
+            branch_col = find_matching_header(headers, BRANCH_CANDIDATES)
+        if not email_col:
+            EMAIL_CANDIDATES = ["mail id", "email", "email id", "mail_id", "email_id"]
+            email_col = find_matching_header(headers, EMAIL_CANDIDATES)
+        if not mobile_col:
+            MOBILE_CANDIDATES = ["mobile number", "mobile", "phone number", "phone"]
+            mobile_col = find_matching_header(headers, MOBILE_CANDIDATES)
 
         synced_count = 0
 
         if connection.sheet_type == "overall_marks":
-            PARTICIPATION_CANDIDATES = ["participation"]
-            CONSISTENCY_CANDIDATES = ["consistency score", "consistency"]
-            AVG_PERF_CANDIDATES = ["avg performance", "average performance", "avg_performance", "average_performance"]
-            GRADE_CANDIDATES = ["cdc grade score", "grade score", "cdc_grade_score"]
-            RANK_CANDIDATES = ["cdc rank", "rank"]
-            BAND_CANDIDATES = ["cdc band", "band"]
-            
-            participation_col = find_matching_header(headers, PARTICIPATION_CANDIDATES)
-            consistency_col = find_matching_header(headers, CONSISTENCY_CANDIDATES)
-            avg_perf_col = find_matching_header(headers, AVG_PERF_CANDIDATES)
-            grade_col = find_matching_header(headers, GRADE_CANDIDATES)
-            rank_col = find_matching_header(headers, RANK_CANDIDATES)
-            band_col = find_matching_header(headers, BAND_CANDIDATES)
+            participation_col = mappings.get("participation") if mappings.get("participation") in headers else None
+            consistency_col = mappings.get("consistency_score") if mappings.get("consistency_score") in headers else None
+            avg_perf_col = mappings.get("avg_performance") if mappings.get("avg_performance") in headers else None
+            grade_col = mappings.get("cdc_grade_score") if mappings.get("cdc_grade_score") in headers else None
+            rank_col = mappings.get("cdc_rank") if mappings.get("cdc_rank") in headers else None
+            band_col = mappings.get("cdc_band") if mappings.get("cdc_band") in headers else None
+
+            # Fallbacks
+            if not participation_col:
+                PARTICIPATION_CANDIDATES = ["participation"]
+                participation_col = find_matching_header(headers, PARTICIPATION_CANDIDATES)
+            if not consistency_col:
+                CONSISTENCY_CANDIDATES = ["consistency score", "consistency"]
+                consistency_col = find_matching_header(headers, CONSISTENCY_CANDIDATES)
+            if not avg_perf_col:
+                AVG_PERF_CANDIDATES = ["avg performance", "average performance", "avg_performance", "average_performance"]
+                avg_perf_col = find_matching_header(headers, AVG_PERF_CANDIDATES)
+            if not grade_col:
+                GRADE_CANDIDATES = ["cdc grade score", "grade score", "cdc_grade_score"]
+                grade_col = find_matching_header(headers, GRADE_CANDIDATES)
+            if not rank_col:
+                RANK_CANDIDATES = ["cdc rank", "rank"]
+                rank_col = find_matching_header(headers, RANK_CANDIDATES)
+            if not band_col:
+                BAND_CANDIDATES = ["cdc band", "band"]
+                band_col = find_matching_header(headers, BAND_CANDIDATES)
             
             # CIE columns - find all headers containing "cie"
             cie_cols = [h for h in headers if "cie" in h.lower()]
@@ -678,20 +704,32 @@ def sync_google_sheet_connection(db: Session, connection_id: int, credentials_pa
                     except (ValueError, TypeError):
                         pass
                         
-                # Dynamic tests extraction
+                # Dynamic tests extraction using AI mappings
                 new_test_scores = {}
                 new_post_assessments = {}
-                for h in headers:
-                    if h in mapped_cols:
-                        continue
-                    h_lower = h.lower()
-                    if "test" in h_lower or "post" in h_lower or "assess" in h_lower:
-                        val = clean_sheet_value(row.get(h))
-                        if "post" in h_lower or "assess" in h_lower:
-                            new_post_assessments[h] = val
+                ai_test_scores = mappings.get("test_scores", [])
+                ai_post_assessments = mappings.get("post_assessments", [])
+                
+                if isinstance(ai_test_scores, list) and len(ai_test_scores) > 0:
+                    for h in headers:
+                        if h in ai_test_scores:
+                            val = clean_sheet_value(row.get(h))
                             new_test_scores[h] = val
-                        elif "test" in h_lower:
-                            new_test_scores[h] = val
+                            if h in ai_post_assessments:
+                                new_post_assessments[h] = val
+                else:
+                    # Fallback to dynamic scan
+                    for h in headers:
+                        if h in mapped_cols:
+                            continue
+                        h_lower = h.lower()
+                        if "test" in h_lower or "post" in h_lower or "assess" in h_lower:
+                            val = clean_sheet_value(row.get(h))
+                            if "post" in h_lower or "assess" in h_lower:
+                                new_post_assessments[h] = val
+                                new_test_scores[h] = val
+                            elif "test" in h_lower:
+                                new_test_scores[h] = val
                             
                 # Merge test scores
                 existing_test_scores = dict(cdc_obj.test_scores or {})
@@ -708,18 +746,28 @@ def sync_google_sheet_connection(db: Session, connection_id: int, credentials_pa
                 
         elif connection.sheet_type == "domain_info":
             domain_cols = {}
-            for h in headers:
-                m = re.match(r"^(.*?)\s*domain\b", h, re.IGNORECASE)
-                if m:
-                    prefix = m.group(1).strip()
-                    perf_col = None
-                    for candidate_h in headers:
-                        cand_norm = normalize_header(candidate_h)
-                        if cand_norm == normalize_header(f"{prefix} Performance") or cand_norm == normalize_header(f"{prefix} Perf"):
-                            perf_col = candidate_h
-                            break
-                    if perf_col:
-                        domain_cols[prefix] = (h, perf_col)
+            ai_domain_mappings = mappings.get("domain_mappings", {})
+            if isinstance(ai_domain_mappings, dict) and len(ai_domain_mappings) > 0:
+                for prefix, pair in ai_domain_mappings.items():
+                    d_col = pair.get("domain")
+                    p_col = pair.get("performance")
+                    if d_col in headers and p_col in headers:
+                        domain_cols[prefix] = (d_col, p_col)
+                        
+            # Fallback if no matching pairs were resolved from mappings
+            if not domain_cols:
+                for h in headers:
+                    m = re.match(r"^(.*?)\s*domain\b", h, re.IGNORECASE)
+                    if m:
+                        prefix = m.group(1).strip()
+                        perf_col = None
+                        for candidate_h in headers:
+                            cand_norm = normalize_header(candidate_h)
+                            if cand_norm == normalize_header(f"{prefix} Performance") or cand_norm == normalize_header(f"{prefix} Perf"):
+                                perf_col = candidate_h
+                                break
+                        if perf_col:
+                            domain_cols[prefix] = (h, perf_col)
                         
             if not domain_cols:
                 raise Exception("Could not find any matching 'Domain' and 'Performance' column pairs (e.g. 'I-II Domain' and 'I-II Performance').")

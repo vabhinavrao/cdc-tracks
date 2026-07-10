@@ -227,6 +227,7 @@ class GoogleSheetConnection(Base):
     sync_status = Column(String, nullable=True) # "success", "failed", "syncing"
     sync_message = Column(String, nullable=True)
     test_mappings = Column(JSON, default=dict, nullable=True)
+    column_mappings = Column(JSON, default=dict, nullable=True)
 
 
 class DetainedStudent(Base):

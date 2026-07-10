@@ -3,7 +3,7 @@ import axios from 'axios';
 import { 
   FileSpreadsheet, Plus, RefreshCw, Edit2, Trash2, Link2, 
   Layers, CheckCircle2, AlertTriangle, Calendar, BookOpen, Clock, 
-  HelpCircle, X, Loader2
+  HelpCircle, X, Loader2, Brain, Sparkles, Database, ArrowRight, ChevronDown, Check
 } from 'lucide-react';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
@@ -27,6 +27,37 @@ const GoogleSheetsSetup = ({ user }) => {
     sheet_type: 'overall_marks',
     sheet_url: ''
   });
+
+  // AI analysis state
+  const [analyzing, setAnalyzing] = useState(false);
+  const [sheetHeaders, setSheetHeaders] = useState([]);
+  const [columnMappings, setColumnMappings] = useState({});
+  const [testScores, setTestScores] = useState([]);
+  const [postAssessments, setPostAssessments] = useState([]);
+  const [domainMappings, setDomainMappings] = useState({});
+  const [showMappingSection, setShowMappingSection] = useState(false);
+
+  // Target database fields
+  const DB_FIELDS_OVERALL = {
+    roll_number: { label: "Roll Number / Reg ID", desc: "Unique student identifier", required: true },
+    name: { label: "Student Name", desc: "Full name", required: false },
+    branch: { label: "Branch", desc: "Academic branch (e.g. CSE)", required: false },
+    email: { label: "Email Address", desc: "Student email ID", required: false },
+    mobile: { label: "Phone Number", desc: "Contact mobile number", required: false },
+    participation: { label: "Participation Score", desc: "Attendance/participation value", required: false },
+    consistency_score: { label: "Consistency Score", desc: "Consistency metric", required: false },
+    avg_performance: { label: "Avg Performance", desc: "Average test performance", required: false },
+    cdc_grade_score: { label: "CDC Grade Score", desc: "Final placement eligibility grade", required: false },
+    cdc_rank: { label: "CDC Rank", desc: "Cohort rank number", required: false },
+    cdc_band: { label: "CDC Band", desc: "CDC Band rating (A, B, C, D)", required: false }
+  };
+
+  const DB_FIELDS_DOMAIN = {
+    roll_number: { label: "Roll Number / Reg ID", desc: "Unique student identifier", required: true },
+    name: { label: "Student Name", desc: "Full name", required: false },
+    branch: { label: "Branch", desc: "Academic branch (e.g. CSE)", required: false },
+    email: { label: "Email Address", desc: "Student email ID", required: false }
+  };
 
   useEffect(() => {
     fetchConnections();
@@ -73,10 +104,16 @@ const GoogleSheetsSetup = ({ user }) => {
       sheet_type: 'overall_marks',
       sheet_url: ''
     });
+    setSheetHeaders([]);
+    setColumnMappings({});
+    setTestScores([]);
+    setPostAssessments([]);
+    setDomainMappings({});
+    setShowMappingSection(false);
     setShowModal(true);
   };
 
-  const handleOpenEditModal = (conn) => {
+  const handleOpenEditModal = async (conn) => {
     setIsEditing(true);
     setEditingId(conn.id);
     setFormData({
@@ -85,7 +122,113 @@ const GoogleSheetsSetup = ({ user }) => {
       sheet_type: conn.sheet_type,
       sheet_url: conn.sheet_url
     });
+    
+    // Extract existing mappings
+    const savedMapping = conn.column_mappings || {};
+    const cols = savedMapping.column_mappings || savedMapping;
+    const tests = savedMapping.test_scores || [];
+    const posts = savedMapping.post_assessments || [];
+    const domains = savedMapping.domain_mappings || {};
+    
+    setColumnMappings(cols);
+    setTestScores(tests);
+    setPostAssessments(posts);
+    setDomainMappings(domains);
+    
+    if (Object.keys(cols).length > 0) {
+      setShowMappingSection(true);
+      // Auto-trigger analysis to fetch actual headers list
+      handleAnalyzeSheet(conn.sheet_url, false);
+    } else {
+      setSheetHeaders([]);
+      setShowMappingSection(false);
+    }
+    
     setShowModal(true);
+  };
+
+  const handleAnalyzeSheet = async (urlToUse = null, triggerFeedback = true) => {
+    const targetUrl = urlToUse || formData.sheet_url;
+    if (!targetUrl.trim()) return;
+
+    setAnalyzing(true);
+    if (triggerFeedback) setActionMessage(null);
+
+    try {
+      const token = user?.email || 'admin@hitam.org';
+      const res = await axios.post(`${API_URL}/api/admin/google-sheets/analyze`, {
+        sheet_url: targetUrl
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      const data = res.data;
+      setSheetHeaders(data.headers || []);
+      
+      // Update form sheet type if AI classified it
+      if (data.sheet_type) {
+        setFormData(prev => ({ ...prev, sheet_type: data.sheet_type }));
+      }
+      
+      // Populate mappings
+      if (!isEditing || !urlToUse) {
+        setColumnMappings(data.column_mappings || {});
+        setTestScores(data.test_scores || []);
+        setPostAssessments(data.post_assessments || []);
+        setDomainMappings(data.domain_mappings || {});
+      }
+      
+      setShowMappingSection(true);
+      if (triggerFeedback) {
+        setActionMessage({ 
+          type: 'success', 
+          text: `AI Sheet Analysis Complete! Detected '${data.sheet_type === 'overall_marks' ? 'Overall Marks' : 'Domain Info'}' sheet structure. Confident: ${Math.round(data.confidence_score * 100)}%.` 
+        });
+      }
+    } catch (err) {
+      console.error("AI Analysis failed:", err);
+      if (triggerFeedback) {
+        setActionMessage({ 
+          type: 'error', 
+          text: err.response?.data?.detail || 'AI analysis failed. Please verify the URL and share permissions.' 
+        });
+      }
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
+  const handleMappingChange = (field, sheetHeader) => {
+    setColumnMappings(prev => ({
+      ...prev,
+      [field]: sheetHeader === "" ? null : sheetHeader
+    }));
+  };
+
+  const handleTestScoreToggle = (header) => {
+    setTestScores(prev => 
+      prev.includes(header) ? prev.filter(t => t !== header) : [...prev, header]
+    );
+  };
+
+  const handlePostAssessmentToggle = (header) => {
+    setPostAssessments(prev => 
+      prev.includes(header) ? prev.filter(p => p !== header) : [...prev, header]
+    );
+    // Make sure it is also included in test scores if selected as post assessment
+    if (!testScores.includes(header)) {
+      setTestScores(prev => [...prev, header]);
+    }
+  };
+
+  const handleDomainMappingChange = (semester, mappingField, sheetHeader) => {
+    setDomainMappings(prev => ({
+      ...prev,
+      [semester]: {
+        ...prev[semester],
+        [mappingField]: sheetHeader === "" ? null : sheetHeader
+      }
+    }));
   };
 
   const handleSubmit = async (e) => {
@@ -93,18 +236,28 @@ const GoogleSheetsSetup = ({ user }) => {
     setActionMessage(null);
     if (!formData.sheet_url.trim()) return;
 
+    const payload = {
+      ...formData,
+      column_mappings: {
+        column_mappings: columnMappings,
+        test_scores: testScores,
+        post_assessments: postAssessments,
+        domain_mappings: domainMappings
+      }
+    };
+
     try {
       const token = user?.email || 'admin@hitam.org';
       if (isEditing) {
-        await axios.put(`${API_URL}/api/admin/google-sheets/${editingId}`, formData, {
+        await axios.put(`${API_URL}/api/admin/google-sheets/${editingId}`, payload, {
           headers: { Authorization: `Bearer ${token}` }
         });
-        setActionMessage({ type: 'success', text: 'Google Sheet connection updated successfully!' });
+        setActionMessage({ type: 'success', text: 'Google Sheet connection updated successfully with custom mappings!' });
       } else {
-        await axios.post(`${API_URL}/api/admin/google-sheets`, formData, {
+        await axios.post(`${API_URL}/api/admin/google-sheets`, payload, {
           headers: { Authorization: `Bearer ${token}` }
         });
-        setActionMessage({ type: 'success', text: 'Google Sheet connection added successfully!' });
+        setActionMessage({ type: 'success', text: 'Google Sheet connection and AI mapping saved successfully!' });
       }
       setShowModal(false);
       fetchConnections();
@@ -179,6 +332,8 @@ const GoogleSheetsSetup = ({ user }) => {
     }
   };
 
+  const targetFields = formData.sheet_type === 'overall_marks' ? DB_FIELDS_OVERALL : DB_FIELDS_DOMAIN;
+
   return (
     <div className="space-y-6">
       {/* Header card */}
@@ -190,7 +345,7 @@ const GoogleSheetsSetup = ({ user }) => {
           <div>
             <h2 className="text-xl font-extrabold text-slate-900">Google Sheets Sync Panel</h2>
             <p className="text-sm text-slate-500 mt-1">
-              Connect external Google Sheets and trigger synchronization. Maps dynamic schemas for first, second, and third-year student tracking cohorts.
+              Connect external Google Sheets and trigger synchronization. AI automatically maps dynamic columns to keep databases secure and aligned.
             </p>
           </div>
         </div>
@@ -214,7 +369,7 @@ const GoogleSheetsSetup = ({ user }) => {
             {actionMessage.type === 'success' ? <CheckCircle2 size={18} className="text-emerald-600" /> : <AlertTriangle size={18} className="text-rose-600" />}
           </div>
           <div className="flex-1">
-            <p className="font-bold">{actionMessage.type === 'success' ? 'Success' : 'Error Occurred'}</p>
+            <p className="font-bold">{actionMessage.type === 'success' ? 'Notification' : 'Error Occurred'}</p>
             <p className="mt-0.5 opacity-90">{actionMessage.text}</p>
           </div>
           <button onClick={() => setActionMessage(null)} className="text-slate-400 hover:text-slate-600 cursor-pointer">
@@ -227,15 +382,15 @@ const GoogleSheetsSetup = ({ user }) => {
       <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex gap-3 text-xs text-slate-600">
         <HelpCircle size={18} className="text-blue-500 shrink-0 mt-0.5" />
         <div className="space-y-1">
-          <p className="font-bold text-slate-800">Dynamic Sync engine instructions:</p>
+          <p className="font-bold text-slate-800">Dynamic Sync & AI Mapping Engine:</p>
           <p>
             1. Share the Google Sheet with your service account email (usually found in `service_account.json` credentials).
           </p>
           <p>
-            2. The sync engine dynamically detects headers: <strong>Roll Number</strong>, <strong>Name</strong>, <strong>Email</strong>, and <strong>Test columns</strong>. It automatically merges records to avoid overwriting scores from other semesters.
+            2. The AI Mapper inspects the columns and automatically identifies student details, scores, and domains, matching them to the target database schema.
           </p>
           <p>
-            3. <strong>Domain Info</strong> sheets require columns formatted like `I-II Domain` and `I-II Performance` to map semester tracks properly.
+            3. Preview and adjust the AI-generated column mappings below before saving to guarantee error-free, custom synchronization.
           </p>
         </div>
       </div>
@@ -263,6 +418,7 @@ const GoogleSheetsSetup = ({ user }) => {
                   <th className="py-4 px-6">Batch & Year</th>
                   <th className="py-4 px-6">Sheet Type</th>
                   <th className="py-4 px-6">Google Sheet Link</th>
+                  <th className="py-4 px-6">Mappings</th>
                   <th className="py-4 px-6">Sync Status</th>
                   <th className="py-4 px-6 text-center">Actions</th>
                 </tr>
@@ -303,6 +459,17 @@ const GoogleSheetsSetup = ({ user }) => {
                           {conn.sheet_url}
                         </a>
                       </div>
+                    </td>
+                    <td className="py-4 px-6">
+                      {conn.column_mappings && Object.keys(conn.column_mappings.column_mappings || conn.column_mappings || {}).length > 0 ? (
+                        <span className="inline-flex items-center gap-1 text-slate-700 text-xs font-bold bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                          <Check size={12} className="text-emerald-600" /> Configured
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-slate-400 text-xs font-medium italic">
+                          Default (Rules)
+                        </span>
+                      )}
                     </td>
                     <td className="py-4 px-6">
                       <div>
@@ -358,12 +525,12 @@ const GoogleSheetsSetup = ({ user }) => {
       {/* Modal Dialog */}
       {showModal && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden">
+          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-xl max-h-[90vh] flex flex-col overflow-hidden animate-slide-up">
             {/* Modal Header */}
-            <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800">
+            <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800 shrink-0">
               <h3 className="text-lg font-bold flex items-center gap-2">
                 <FileSpreadsheet size={20} className="text-emerald-400" />
-                <span>{isEditing ? 'Edit Connection' : 'Connect Google Sheet'}</span>
+                <span>{isEditing ? 'Edit Google Sheet Connection' : 'Connect New Google Sheet'}</span>
               </h3>
               <button 
                 onClick={() => setShowModal(false)}
@@ -374,67 +541,96 @@ const GoogleSheetsSetup = ({ user }) => {
             </div>
 
             {/* Modal Form */}
-            <form onSubmit={handleSubmit} className="p-6 space-y-4 text-left">
-              {/* Batch selection */}
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Target Student Batch</label>
-                <select
-                  value={formData.batch_year}
-                  onChange={(e) => setFormData(prev => ({ ...prev, batch_year: e.target.value }))}
-                  className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 font-bold focus:outline-none focus:ring-2 focus:ring-blue-500/20 bg-white"
-                  required
-                >
-                  {batches.map(b => (
-                    <option key={b.id} value={b.batch_year}>Batch {b.batch_year}</option>
-                  ))}
-                  {batches.length === 0 && (
-                    <>
-                      <option value="2024-2028">Batch 2024-2028</option>
-                      <option value="2025-2029">Batch 2025-2029</option>
-                      <option value="2023-2027">Batch 2023-2027</option>
-                    </>
-                  )}
-                </select>
+            <form onSubmit={handleSubmit} className="p-6 space-y-5 text-left overflow-y-auto flex-1">
+              
+              {/* Batch & Academic Year Selectors */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2">Target Student Batch</label>
+                  <select
+                    value={formData.batch_year}
+                    onChange={(e) => setFormData(prev => ({ ...prev, batch_year: e.target.value }))}
+                    className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 font-bold focus:outline-none focus:ring-2 focus:ring-blue-500/20 bg-white text-xs"
+                    required
+                  >
+                    {batches.map(b => (
+                      <option key={b.id} value={b.batch_year}>Batch {b.batch_year}</option>
+                    ))}
+                    {batches.length === 0 && (
+                      <>
+                        <option value="2024-2028">Batch 2024-2028</option>
+                        <option value="2025-2029">Batch 2025-2029</option>
+                        <option value="2023-2027">Batch 2023-2027</option>
+                      </>
+                    )}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2">Academic Year</label>
+                  <select
+                    value={formData.academic_year}
+                    onChange={(e) => setFormData(prev => ({ ...prev, academic_year: parseInt(e.target.value) }))}
+                    className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 font-bold focus:outline-none focus:ring-2 focus:ring-blue-500/20 bg-white text-xs"
+                    required
+                  >
+                    <option value={1}>1st Year (Freshman)</option>
+                    <option value={2}>2nd Year (Sophomore)</option>
+                    <option value={3}>3rd Year (Junior)</option>
+                    <option value={4}>4th Year (Senior)</option>
+                  </select>
+                </div>
               </div>
 
-              {/* Academic Year select */}
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Cohort Academic Year</label>
-                <select
-                  value={formData.academic_year}
-                  onChange={(e) => setFormData(prev => ({ ...prev, academic_year: parseInt(e.target.value) }))}
-                  className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 font-bold focus:outline-none focus:ring-2 focus:ring-blue-500/20 bg-white"
-                  required
-                >
-                  <option value={1}>1st Year (Freshman)</option>
-                  <option value={2}>2nd Year (Sophomore)</option>
-                  <option value={3}>3rd Year (Junior)</option>
-                  <option value={4}>4th Year (Senior)</option>
-                </select>
+              {/* Sheet URL/ID & AI analysis trigger */}
+              <div className="space-y-2">
+                <label className="block text-xs font-black text-slate-400 uppercase tracking-wider">Google Sheet URL or Spreadsheet ID</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={formData.sheet_url}
+                    onChange={(e) => setFormData(prev => ({ ...prev, sheet_url: e.target.value }))}
+                    placeholder="https://docs.google.com/spreadsheets/d/..."
+                    className="flex-1 p-3 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-xs font-medium placeholder-slate-400"
+                    required
+                  />
+                  <button
+                    type="button"
+                    disabled={analyzing || !formData.sheet_url}
+                    onClick={() => handleAnalyzeSheet()}
+                    className="px-4 bg-slate-900 hover:bg-slate-800 disabled:bg-slate-200 text-white disabled:text-slate-400 rounded-xl transition-all cursor-pointer font-bold text-xs flex items-center gap-1.5 shrink-0 border border-transparent disabled:border-slate-200"
+                  >
+                    {analyzing ? (
+                      <Loader2 size={14} className="animate-spin" />
+                    ) : (
+                      <Brain size={14} className="text-purple-400" />
+                    )}
+                    <span>{analyzing ? 'Analyzing...' : 'AI Map'}</span>
+                  </button>
+                </div>
               </div>
 
-              {/* Sheet Type */}
+              {/* Sheet Type (Dynamically classified or overrideable) */}
               <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Sheet Data Type</label>
+                <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2">Data Classification</label>
                 <div className="grid grid-cols-2 gap-3">
                   <button
                     type="button"
                     onClick={() => setFormData(prev => ({ ...prev, sheet_type: 'overall_marks' }))}
-                    className={`p-3 rounded-xl border flex flex-col items-center gap-1.5 text-xs font-bold cursor-pointer transition-all ${
+                    className={`p-3 rounded-xl border flex items-center gap-2 text-xs font-bold cursor-pointer transition-all ${
                       formData.sheet_type === 'overall_marks'
-                        ? 'border-purple-600 bg-purple-50/50 text-purple-700'
+                        ? 'border-purple-600 bg-purple-50/50 text-purple-700 font-extrabold shadow-sm'
                         : 'border-slate-200 hover:bg-slate-50 text-slate-500'
                     }`}
                   >
                     <BookOpen size={16} />
-                    <span>Overall Marks / Tests</span>
+                    <span>Overall Marks & Tests</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => setFormData(prev => ({ ...prev, sheet_type: 'domain_info' }))}
-                    className={`p-3 rounded-xl border flex flex-col items-center gap-1.5 text-xs font-bold cursor-pointer transition-all ${
+                    className={`p-3 rounded-xl border flex items-center gap-2 text-xs font-bold cursor-pointer transition-all ${
                       formData.sheet_type === 'domain_info'
-                        ? 'border-amber-600 bg-amber-50/50 text-amber-700'
+                        ? 'border-amber-600 bg-amber-50/50 text-amber-700 font-extrabold shadow-sm'
                         : 'border-slate-200 hover:bg-slate-50 text-slate-500'
                     }`}
                   >
@@ -444,21 +640,156 @@ const GoogleSheetsSetup = ({ user }) => {
                 </div>
               </div>
 
-              {/* Sheet URL/ID */}
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Google Sheet URL or Spreadsheet ID</label>
-                <input
-                  type="text"
-                  value={formData.sheet_url}
-                  onChange={(e) => setFormData(prev => ({ ...prev, sheet_url: e.target.value }))}
-                  placeholder="https://docs.google.com/spreadsheets/d/..."
-                  className="w-full p-3 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-xs font-medium placeholder-slate-400"
-                  required
-                />
-              </div>
+              {/* Interactive Column Mapping Panel */}
+              {showMappingSection && (
+                <div className="border border-slate-200 rounded-2xl bg-slate-50/60 p-4 space-y-4 max-h-[350px] overflow-y-auto">
+                  <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                    <h4 className="text-xs font-black text-slate-800 flex items-center gap-1.5 uppercase tracking-wider">
+                      <Sparkles size={14} className="text-purple-600" />
+                      <span>Configure Mappings</span>
+                    </h4>
+                    <span className="text-[10px] text-slate-400 font-bold">
+                      {sheetHeaders.length} Columns Found
+                    </span>
+                  </div>
+
+                  {/* Schema field mappings list */}
+                  <div className="space-y-3">
+                    <p className="text-[10px] text-slate-500 font-medium leading-relaxed italic">
+                      Verify that each database target maps to the correct header from your Google Sheet.
+                    </p>
+                    
+                    {Object.entries(targetFields).map(([dbField, config]) => {
+                      const selectedVal = columnMappings[dbField] || "";
+                      return (
+                        <div key={dbField} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2 bg-white rounded-xl border border-slate-100 shadow-sm">
+                          <div>
+                            <p className="text-xs font-bold text-slate-800 flex items-center gap-1">
+                              {config.label}
+                              {config.required && <span className="text-rose-500">*</span>}
+                            </p>
+                            <p className="text-[10px] text-slate-400 mt-0.5">{config.desc}</p>
+                          </div>
+                          <select
+                            value={selectedVal}
+                            onChange={(e) => handleMappingChange(dbField, e.target.value)}
+                            className="p-2 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 bg-white max-w-[200px] sm:max-w-xs truncate"
+                            required={config.required}
+                          >
+                            <option value="">-- Ignored / Empty --</option>
+                            {sheetHeaders.map(h => (
+                              <option key={h} value={h}>{h}</option>
+                            ))}
+                          </select>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Overall marks test scores multi-selection chips */}
+                  {formData.sheet_type === 'overall_marks' && sheetHeaders.length > 0 && (
+                    <div className="border-t border-slate-200 pt-3 space-y-3">
+                      <div>
+                        <h5 className="text-[11px] font-black text-slate-700 flex items-center gap-1 uppercase tracking-wider">
+                          <Database size={12} className="text-purple-600" />
+                          <span>Aptitude/Technical Tests Columns</span>
+                        </h5>
+                        <p className="text-[10px] text-slate-400 mt-0.5">Toggle columns containing mock tests or code challenges to be parsed into performance charts.</p>
+                      </div>
+                      
+                      <div className="flex flex-wrap gap-1.5">
+                        {sheetHeaders
+                          .filter(h => !Object.values(columnMappings).includes(h))
+                          .map(h => {
+                            const isTest = testScores.includes(h);
+                            const isPost = postAssessments.includes(h);
+                            return (
+                              <div key={h} className={`inline-flex items-center rounded-lg border p-1.5 transition-all text-[10px] font-bold gap-1.5 bg-white ${
+                                isTest ? 'border-purple-300 text-purple-700 bg-purple-50/20' : 'border-slate-100 text-slate-500'
+                              }`}>
+                                <button
+                                  type="button"
+                                  onClick={() => handleTestScoreToggle(h)}
+                                  className="hover:underline cursor-pointer"
+                                >
+                                  {h}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handlePostAssessmentToggle(h)}
+                                  title="Mark as Post Assessment"
+                                  className={`px-1 py-0.5 rounded text-[8px] uppercase tracking-tighter ${
+                                    isPost 
+                                      ? 'bg-purple-600 text-white' 
+                                      : 'bg-slate-100 text-slate-400 hover:bg-purple-100 hover:text-purple-700'
+                                  }`}
+                                >
+                                  Post
+                                </button>
+                              </div>
+                            );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Domain mappings semester list */}
+                  {formData.sheet_type === 'domain_info' && sheetHeaders.length > 0 && (
+                    <div className="border-t border-slate-200 pt-3 space-y-3">
+                      <div>
+                        <h5 className="text-[11px] font-black text-slate-700 flex items-center gap-1 uppercase tracking-wider">
+                          <Layers size={12} className="text-amber-600" />
+                          <span>Semester Domain & Performance Pairs</span>
+                        </h5>
+                        <p className="text-[10px] text-slate-400 mt-0.5">Map each semester's domain choice and final score.</p>
+                      </div>
+
+                      <div className="space-y-3 bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
+                        {["I-II", "II-I", "II-II"].map((sem) => {
+                          const semMap = domainMappings[sem] || {};
+                          return (
+                            <div key={sem} className="flex flex-col gap-2 pb-2 border-b border-slate-50 last:border-b-0 last:pb-0">
+                              <p className="text-xs font-extrabold text-slate-800 bg-slate-50 px-2 py-0.5 rounded self-start">{sem} Semester</p>
+                              <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                  <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Domain Choice Column</label>
+                                  <select
+                                    value={semMap.domain || ""}
+                                    onChange={(e) => handleDomainMappingChange(sem, "domain", e.target.value)}
+                                    className="w-full p-2 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 bg-white"
+                                  >
+                                    <option value="">-- Ignored --</option>
+                                    {sheetHeaders.map(h => (
+                                      <option key={h} value={h}>{h}</option>
+                                    ))}
+                                  </select>
+                                </div>
+                                <div>
+                                  <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Performance Score Column</label>
+                                  <select
+                                    value={semMap.performance || ""}
+                                    onChange={(e) => handleDomainMappingChange(sem, "performance", e.target.value)}
+                                    className="w-full p-2 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 bg-white"
+                                  >
+                                    <option value="">-- Ignored --</option>
+                                    {sheetHeaders.map(h => (
+                                      <option key={h} value={h}>{h}</option>
+                                    ))}
+                                  </select>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                </div>
+              )}
 
               {/* Actions */}
-              <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
+              <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 shrink-0">
                 <button
                   type="button"
                   onClick={() => setShowModal(false)}

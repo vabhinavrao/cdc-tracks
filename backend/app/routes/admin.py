@@ -1,5 +1,6 @@
 # backend/app/routes/admin.py
 import io
+import os
 from typing import Optional, List
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Header, Query, status, Response
@@ -1189,6 +1190,10 @@ class GoogleSheetConnectionRequest(BaseModel):
     academic_year: int
     sheet_type: str  # "overall_marks" or "domain_info"
     sheet_url: str
+    column_mappings: Optional[dict] = None
+
+class GoogleSheetAnalyzeRequest(BaseModel):
+    sheet_url: str
 
 @router.get("/google-sheets")
 def get_google_sheet_connections(
@@ -1208,7 +1213,8 @@ def get_google_sheet_connections(
             "updated_at": c.updated_at.isoformat() if c.updated_at else None,
             "last_synced": c.last_synced.isoformat() if c.last_synced else None,
             "sync_status": c.sync_status,
-            "sync_message": c.sync_message
+            "sync_message": c.sync_message,
+            "column_mappings": c.column_mappings
         })
     return res
 
@@ -1226,7 +1232,8 @@ def add_google_sheet_connection(
         batch_year=payload.batch_year.strip(),
         academic_year=payload.academic_year,
         sheet_type=sheet_type,
-        sheet_url=payload.sheet_url.strip()
+        sheet_url=payload.sheet_url.strip(),
+        column_mappings=payload.column_mappings or {}
     )
     db.add(new_conn)
     try:
@@ -1257,6 +1264,8 @@ def update_google_sheet_connection(
     conn.academic_year = payload.academic_year
     conn.sheet_type = sheet_type
     conn.sheet_url = payload.sheet_url.strip()
+    if payload.column_mappings is not None:
+        conn.column_mappings = payload.column_mappings
 
     try:
         db.commit()
@@ -1284,6 +1293,79 @@ def delete_google_sheet_connection(
         raise HTTPException(status_code=500, detail=f"Failed to delete connection: {str(e)}")
 
     return {"message": "Google Sheet Connection deleted successfully"}
+
+@router.post("/google-sheets/analyze")
+def analyze_google_sheet_endpoint(
+    payload: GoogleSheetAnalyzeRequest,
+    current_admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    try:
+        import gspread
+        from google.oauth2.service_account import Credentials
+    except ImportError:
+        raise HTTPException(status_code=500, detail="Missing dependencies: gspread or google-auth")
+
+    # Authorize client using service account
+    scopes = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
+    env_json = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON")
+    
+    creds = None
+    if env_json:
+        try:
+            import json
+            info = json.loads(env_json)
+            creds = Credentials.from_service_account_info(info, scopes=scopes)
+        except Exception:
+            pass
+            
+    if not creds:
+        credentials_path = "service_account.json"
+        if not os.path.exists(credentials_path):
+            alt_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), credentials_path)
+            if os.path.exists(alt_path):
+                credentials_path = alt_path
+            else:
+                raise HTTPException(status_code=400, detail="Service account credential file 'service_account.json' not found.")
+        try:
+            creds = Credentials.from_service_account_file(credentials_path, scopes=scopes)
+        except Exception as e_cred:
+            raise HTTPException(status_code=400, detail=f"Failed to load credentials: {str(e_cred)}")
+
+    try:
+        client = gspread.authorize(creds)
+        sheet_url = payload.sheet_url.strip()
+        try:
+            sheet = client.open_by_url(sheet_url) if sheet_url.startswith("http") else client.open_by_key(sheet_url)
+        except Exception as e_open:
+            import gspread
+            if isinstance(e_open, gspread.exceptions.SpreadsheetNotFound):
+                err_msg = "Spreadsheet not found (404). Ensure the link is correct."
+            elif isinstance(e_open, PermissionError) or (hasattr(e_open, 'code') and e_open.code == 403) or "403" in str(e_open):
+                err_msg = "Access Denied (403). The service account has not been added as a Viewer/Editor in the Share settings."
+            else:
+                err_msg = str(e_open) or type(e_open).__name__
+            raise HTTPException(status_code=400, detail=f"Failed to access Google Sheet: {err_msg}. Make sure it is shared with {creds.service_account_email}")
+
+        wks = sheet.sheet1
+        all_values = wks.get_all_values(value_render_option='FORMATTED_VALUE')
+        if not all_values:
+            raise HTTPException(status_code=400, detail="No data found in the first sheet of the spreadsheet.")
+            
+        headers = [str(h).replace("\n", " ").strip() for h in all_values[0]]
+        sample_rows = all_values[1:6]  # Up to 5 rows
+        
+        from app.services.ai_mapper import analyze_sheet_headers_with_ai
+        analysis = analyze_sheet_headers_with_ai(headers, sample_rows)
+        
+        # Include available columns list for frontend dropdowns
+        analysis["headers"] = headers
+        return analysis
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error analyzing sheet: {str(e)}")
 
 @router.post("/google-sheets/{conn_id}/sync")
 def sync_google_sheet_connection_endpoint(
