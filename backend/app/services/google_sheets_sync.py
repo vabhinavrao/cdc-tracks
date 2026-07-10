@@ -885,74 +885,180 @@ def sync_google_sheet_connection(db: Session, connection_id: int, credentials_pa
                 synced_count += 1
                 
         elif connection.sheet_type == "finalised_domains":
-            finalised_domain_col = mappings.get("finalised_domain") if mappings.get("finalised_domain") in headers else None
+            worksheets = sheet.worksheets()
             
-            # Fallback
-            if not finalised_domain_col:
-                finalised_domain_col = find_matching_header(headers, ["finalised domain", "finalised track", "selected domain", "selected track", "track", "domain"])
+            # Check if we should use multi-tab track matching
+            # We use multi-tab if there are multiple worksheets and the first worksheet doesn't contain a finalised_domain column,
+            # or if there are multiple tabs representing tracks.
+            first_wks = worksheets[0]
+            first_values = first_wks.get_all_values(value_render_option='FORMATTED_VALUE')
+            first_headers = []
+            if first_values:
+                first_headers = [str(h).replace("\n", " ").strip() for h in first_values[0]]
+            
+            # Mapped columns
+            roll_col_mapped = mappings.get("roll_number")
+            finalised_domain_col_mapped = mappings.get("finalised_domain")
+            
+            has_domain_col = False
+            if finalised_domain_col_mapped in first_headers:
+                has_domain_col = True
+            else:
+                has_domain_col = find_matching_header(first_headers, ["finalised domain", "finalised track", "selected domain", "selected track", "track", "domain"]) is not None
                 
-            for row in records:
-                roll = str(row.get(roll_col) or "").strip()
-                if not roll:
-                    continue
+            use_multi_tab = len(worksheets) > 1 and not has_domain_col
+            
+            if use_multi_tab:
+                logger.info("Syncing finalized domains using multi-tab track matching (each tab represents a track).")
+                for wks in worksheets:
+                    track_val = wks.title.strip()
+                    # Skip common summary/meta tabs
+                    if track_val.lower() in ["summary", "overall", "instructions", "template", "sheet1", "sheet 1", "readme", "dashboard"]:
+                        continue
+                        
+                    wks_records = fetch_sheet_records(wks)
+                    if not wks_records:
+                        continue
+                        
+                    # Get headers of this worksheet
+                    wks_headers = list(wks_records[0].keys())
+                        
+                    wks_roll_col = roll_col_mapped if roll_col_mapped in wks_headers else find_matching_header(wks_headers, ["roll number", "roll no", "roll_number", "rollno", "roll", "reg. id", "reg id", "registration number", "registration no", "register no", "student id", "id"])
+                    if not wks_roll_col:
+                        logger.warning(f"Skipping tab '{track_val}' as no Roll Number column was identified.")
+                        continue
+                        
+                    wks_name_col = mappings.get("name") if mappings.get("name") in wks_headers else find_matching_header(wks_headers, ["name", "student name"])
+                    wks_branch_col = mappings.get("branch") if mappings.get("branch") in wks_headers else find_matching_header(wks_headers, ["branch"])
+                    wks_email_col = mappings.get("email") if mappings.get("email") in wks_headers else find_matching_header(wks_headers, ["email", "mail id"])
+                    wks_mobile_col = mappings.get("mobile") if mappings.get("mobile") in wks_headers else find_matching_header(wks_headers, ["mobile", "phone"])
                     
-                cdc_obj = db.query(CDCPerformance).filter(
-                    CDCPerformance.roll_number == roll,
-                    CDCPerformance.academic_year == connection.academic_year
-                ).first()
-                if not cdc_obj:
-                    cdc_obj = CDCPerformance(
-                        roll_number=roll, 
-                        batch_year=connection.batch_year,
-                        academic_year=connection.academic_year
-                    )
-                    db.add(cdc_obj)
-                else:
-                    cdc_obj.batch_year = connection.batch_year
+                    # Semester context
+                    wks_sem_col = find_matching_header(wks_headers, ["semester", "sem"])
                     
-                # Dynamic basic info update
-                if name_col and row.get(name_col):
-                    cdc_obj.name = str(row.get(name_col)).strip()
-                if branch_col and row.get(branch_col):
-                    cdc_obj.branch = str(row.get(branch_col)).strip()
-                if email_col and row.get(email_col):
-                    cdc_obj.email = str(row.get(email_col)).strip()
-                if mobile_col and row.get(mobile_col):
-                    cdc_obj.mobile = str(row.get(mobile_col)).strip()
+                    for row in wks_records:
+                        roll = str(row.get(wks_roll_col) or "").strip()
+                        if not roll:
+                            continue
+                            
+                        cdc_obj = db.query(CDCPerformance).filter(
+                            CDCPerformance.roll_number == roll,
+                            CDCPerformance.academic_year == connection.academic_year
+                        ).first()
+                        if not cdc_obj:
+                            cdc_obj = CDCPerformance(
+                                roll_number=roll, 
+                                batch_year=connection.batch_year,
+                                academic_year=connection.academic_year
+                            )
+                            db.add(cdc_obj)
+                        else:
+                            cdc_obj.batch_year = connection.batch_year
+                            
+                        # Update basic info
+                        if wks_name_col and row.get(wks_name_col):
+                            cdc_obj.name = str(row.get(wks_name_col)).strip()
+                        if wks_branch_col and row.get(wks_branch_col):
+                            cdc_obj.branch = str(row.get(wks_branch_col)).strip()
+                        if wks_email_col and row.get(wks_email_col):
+                            cdc_obj.email = str(row.get(wks_email_col)).strip()
+                        if wks_mobile_col and row.get(wks_mobile_col):
+                            cdc_obj.mobile = str(row.get(wks_mobile_col)).strip()
+                            
+                        sem_val = str(row.get(wks_sem_col)).strip() if (wks_sem_col and row.get(wks_sem_col)) else f"Year-{connection.academic_year}"
+                        
+                        existing_finalised = dict(cdc_obj.finalised_domains or {})
+                        existing_finalised[sem_val] = track_val
+                        cdc_obj.finalised_domains = existing_finalised
+                        
+                        # Also sync to finalised_tracks table
+                        from app.models import FinalisedTrack
+                        final_track = db.query(FinalisedTrack).filter(
+                            FinalisedTrack.roll_number == roll,
+                            FinalisedTrack.academic_year == connection.academic_year,
+                            FinalisedTrack.semester == sem_val
+                        ).first()
+                        if not final_track:
+                            final_track = FinalisedTrack(
+                                roll_number=roll,
+                                batch_year=connection.batch_year,
+                                academic_year=connection.academic_year,
+                                semester=sem_val,
+                                track_id=track_val
+                            )
+                            db.add(final_track)
+                        else:
+                            final_track.track_id = track_val
+                            
+                        ensure_student_user(db, roll, row, name_col=wks_name_col, branch_col=wks_branch_col, email_col=wks_email_col, batch_year=connection.batch_year)
+                        synced_count += 1
+            else:
+                # Single-sheet or column-based finalised domain sync fallback
+                finalised_domain_col = finalised_domain_col_mapped
+                if not finalised_domain_col:
+                    finalised_domain_col = find_matching_header(headers, ["finalised domain", "finalised track", "selected domain", "selected track", "track", "domain"])
                     
-                # Semester context
-                sem_col = find_matching_header(headers, ["semester", "sem"])
-                sem_val = str(row.get(sem_col)).strip() if (sem_col and row.get(sem_col)) else f"Year-{connection.academic_year}"
-                
-                # Load existing domains list/dict and update
-                existing_finalised = dict(cdc_obj.finalised_domains or {})
-                if finalised_domain_col and row.get(finalised_domain_col):
-                    track_val = str(row.get(finalised_domain_col)).strip()
-                    existing_finalised[sem_val] = track_val
-                    
-                    # Also sync directly to finalised_tracks table if possible to keep both tables in sync
-                    from app.models import FinalisedTrack
-                    final_track = db.query(FinalisedTrack).filter(
-                        FinalisedTrack.roll_number == roll,
-                        FinalisedTrack.academic_year == connection.academic_year,
-                        FinalisedTrack.semester == sem_val
+                for row in records:
+                    roll = str(row.get(roll_col) or "").strip()
+                    if not roll:
+                        continue
+                        
+                    cdc_obj = db.query(CDCPerformance).filter(
+                        CDCPerformance.roll_number == roll,
+                        CDCPerformance.academic_year == connection.academic_year
                     ).first()
-                    if not final_track:
-                        final_track = FinalisedTrack(
-                            roll_number=roll,
+                    if not cdc_obj:
+                        cdc_obj = CDCPerformance(
+                            roll_number=roll, 
                             batch_year=connection.batch_year,
-                            academic_year=connection.academic_year,
-                            semester=sem_val,
-                            track_id=track_val
+                            academic_year=connection.academic_year
                         )
-                        db.add(final_track)
+                        db.add(cdc_obj)
                     else:
-                        final_track.track_id = track_val
-                
-                cdc_obj.finalised_domains = existing_finalised
-                
-                ensure_student_user(db, roll, row, name_col=name_col, branch_col=branch_col, email_col=email_col, batch_year=connection.batch_year)
-                synced_count += 1
+                        cdc_obj.batch_year = connection.batch_year
+                        
+                    # Dynamic basic info update
+                    if name_col and row.get(name_col):
+                        cdc_obj.name = str(row.get(name_col)).strip()
+                    if branch_col and row.get(branch_col):
+                        cdc_obj.branch = str(row.get(branch_col)).strip()
+                    if email_col and row.get(email_col):
+                        cdc_obj.email = str(row.get(email_col)).strip()
+                    if mobile_col and row.get(mobile_col):
+                        cdc_obj.mobile = str(row.get(mobile_col)).strip()
+                        
+                    # Semester context
+                    sem_col = find_matching_header(headers, ["semester", "sem"])
+                    sem_val = str(row.get(sem_col)).strip() if (sem_col and row.get(sem_col)) else f"Year-{connection.academic_year}"
+                    
+                    # Load existing domains list/dict and update
+                    existing_finalised = dict(cdc_obj.finalised_domains or {})
+                    if finalised_domain_col and row.get(finalised_domain_col):
+                        track_val = str(row.get(finalised_domain_col)).strip()
+                        existing_finalised[sem_val] = track_val
+                        
+                        # Also sync directly to finalised_tracks table
+                        from app.models import FinalisedTrack
+                        final_track = db.query(FinalisedTrack).filter(
+                            FinalisedTrack.roll_number == roll,
+                            FinalisedTrack.academic_year == connection.academic_year,
+                            FinalisedTrack.semester == sem_val
+                        ).first()
+                        if not final_track:
+                            final_track = FinalisedTrack(
+                                roll_number=roll,
+                                batch_year=connection.batch_year,
+                                academic_year=connection.academic_year,
+                                semester=sem_val,
+                                track_id=track_val
+                            )
+                            db.add(final_track)
+                        else:
+                            final_track.track_id = track_val
+                    
+                    cdc_obj.finalised_domains = existing_finalised
+                    ensure_student_user(db, roll, row, name_col=name_col, branch_col=branch_col, email_col=email_col, batch_year=connection.batch_year)
+                    synced_count += 1
                 
         connection.sync_status = "success"
         connection.last_synced = datetime.utcnow()
