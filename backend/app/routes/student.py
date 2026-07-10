@@ -227,7 +227,14 @@ def get_dashboard_data(
         if batch_schedule.project_selection_end and now > batch_schedule.project_selection_end:
             is_project_selection_open = False
 
-    # Retrieve complete details for the selected track (auto-resolve if null)
+    # Retrieve complete details for the selected track (auto-resolve if null or if raw value doesn't match a valid slug)
+    if user.selected_track_id:
+        # Check if the stored value actually resolves to a real track
+        existing_track = db.query(Track).filter(Track.id == user.selected_track_id).first()
+        if not existing_track:
+            # The stored value is stale/raw — clear it so auto-resolve can fix it
+            user.selected_track_id = None
+
     if not user.selected_track_id:
         auto_track_id = get_auto_allocated_track_id(db, user.roll_number)
         if auto_track_id:
@@ -312,12 +319,33 @@ def get_cdc_dashboard_data(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    cdc_record = get_cdc_performance_by_roll(db, user.roll_number, user.email, academic_year=academic_year)
+    from sqlalchemy import func as sqlfunc
     
-    if not cdc_record:
-        # Fallback to latest year if specified year not found
-        cdc_record = get_cdc_performance_by_roll(db, user.roll_number, user.email)
-        
+    # Fetch all available academic years for this student
+    all_records_q = db.query(CDCPerformance).filter(
+        sqlfunc.upper(CDCPerformance.roll_number) == (user.roll_number or "").strip().upper()
+    ).all()
+    available_years = sorted(set(r.academic_year for r in all_records_q if r.academic_year))
+
+    if academic_year is not None:
+        cdc_record = get_cdc_performance_by_roll(db, user.roll_number, user.email, academic_year=academic_year)
+        if not cdc_record:
+            # Requested year not found — fall through to smart default
+            academic_year = None
+
+    if academic_year is None:
+        # Pick the most recent year that has actual test data (test_scores not empty/null)
+        # to avoid defaulting to a future year with no data
+        best_record = None
+        for rec in sorted(all_records_q, key=lambda r: r.academic_year or 0, reverse=True):
+            if rec.test_scores and len(rec.test_scores) > 0:
+                best_record = rec
+                break
+        # If none has test data, fall back to the one with the smallest academic_year (earliest = most likely to have data)
+        if not best_record and all_records_q:
+            best_record = min(all_records_q, key=lambda r: r.academic_year or 99)
+        cdc_record = best_record
+
     if not cdc_record:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -326,12 +354,6 @@ def get_cdc_dashboard_data(
     
     from app.services.cdc_service import calculate_ranks
     ranks = calculate_ranks(db, cdc_record)
-
-    # Fetch all available academic years for this student
-    all_records = db.query(CDCPerformance.academic_year).filter(
-        CDCPerformance.roll_number == cdc_record.roll_number
-    ).distinct().all()
-    available_years = sorted([r[0] for r in all_records])
         
     return {
         "student": {

@@ -139,10 +139,18 @@ def google_login(payload: GoogleLoginRequest, db: Session = Depends(get_db)):
         db.add(user)
 
     # Automatically resolve and assign track if student doesn't have an active track selected
-    if role == "student" and not user.selected_track_id:
-        auto_track_id = get_auto_allocated_track_id(db, user.roll_number)
-        if auto_track_id:
-            user.selected_track_id = auto_track_id
+    # Also re-resolve if the stored value is stale/raw and doesn't match any valid track slug
+    if role == "student":
+        if user.selected_track_id:
+            from app.models import Track
+            valid = db.query(Track).filter(Track.id == user.selected_track_id).first()
+            if not valid:
+                user.selected_track_id = None  # Clear stale raw value
+
+        if not user.selected_track_id:
+            auto_track_id = get_auto_allocated_track_id(db, user.roll_number)
+            if auto_track_id:
+                user.selected_track_id = auto_track_id
         
     try:
         db.commit()
