@@ -627,9 +627,9 @@ const GoogleSheetsSetup = ({ user }) => {
             <form onSubmit={handleSubmit} className="p-6 space-y-5 text-left overflow-y-auto flex-1">
               
               {/* Batch & Academic Year Selectors */}
-              <div className={`grid ${formData.sheet_type === 'semester_projects' || formData.sheet_type === 'finalised_domains' ? 'grid-cols-3' : 'grid-cols-2'} gap-4`}>
+              <div className={`grid ${formData.sheet_type === 'semester_projects' || formData.sheet_type === 'finalised_domains' ? 'grid-cols-3' : 'grid-cols-2'} gap-4 items-end`}>
                 <div>
-                  <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2">Target Student Batch</label>
+                  <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2 whitespace-nowrap">Target Student Batch</label>
                   <select
                     value={formData.batch_year}
                     onChange={(e) => setFormData(prev => ({ ...prev, batch_year: e.target.value }))}
@@ -649,7 +649,7 @@ const GoogleSheetsSetup = ({ user }) => {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2">Academic Year</label>
+                  <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2 whitespace-nowrap">Academic Year</label>
                   <select
                     value={formData.academic_year}
                     onChange={(e) => setFormData(prev => ({ 
@@ -668,7 +668,7 @@ const GoogleSheetsSetup = ({ user }) => {
                 </div>
                 {(formData.sheet_type === 'semester_projects' || formData.sheet_type === 'finalised_domains') && (
                   <div>
-                    <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2">Target Semester</label>
+                    <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2 whitespace-nowrap">Target Semester</label>
                     <select
                       value={formData.semester}
                       onChange={(e) => setFormData(prev => ({ ...prev, semester: e.target.value }))}
