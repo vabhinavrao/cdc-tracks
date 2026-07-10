@@ -331,7 +331,7 @@ const TrackDetails = ({ user }) => {
   const [confirmInput, setConfirmInput] = useState('');
 
   // Admin state for viewing enrolled students
-  const isAdmin = user?.role === 'super_admin' || user?.role === 'branch_admin';
+  const isAdmin = user?.role === 'super_admin' || user?.role === 'branch_admin' || user?.role === 'principal' || user?.role === 'director' || user?.role === 'registrar' || user?.role === 'dean.academics';
   const [showEnrolledModal, setShowEnrolledModal] = useState(false);
   const [enrolledStudents, setEnrolledStudents] = useState([]);
   const [enrolledLoading, setEnrolledLoading] = useState(false);
@@ -1204,7 +1204,7 @@ const TrackDetails = ({ user }) => {
                                 Band {st.cdc_band}
                               </span>
                             </td>
-                            <td className="py-3 px-4 text-center font-bold text-slate-900">{st.avg_performance}%</td>
+                            <td className="py-3 px-4 text-center font-bold text-slate-900">{st.avg_performance != null ? `${st.avg_performance}%` : 'N/A'}</td>
                           </tr>
                         ))}
                       </tbody>

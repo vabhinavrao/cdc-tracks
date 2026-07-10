@@ -285,14 +285,9 @@ def get_test_mappings(db: Session, batch_year: str, academic_year: int) -> dict:
     
     if connection and connection.test_mappings:
         return connection.test_mappings
-        
-    # Fallback to any connection's test_mappings if specific is not found
-    fallback = db.query(GoogleSheetConnection).filter(
-        GoogleSheetConnection.sheet_type == "overall_marks"
-    ).first()
-    if fallback and fallback.test_mappings:
-        return fallback.test_mappings
-        
+
+    # No sheet connected for this specific year — return empty so frontend
+    # shows generic "Test N" labels rather than leaking another year's names.
     return {}
 
 

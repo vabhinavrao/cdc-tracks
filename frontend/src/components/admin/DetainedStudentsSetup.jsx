@@ -7,7 +7,7 @@ import {
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
-const DetainedStudentsSetup = ({ user }) => {
+const DetainedStudentsSetup = ({ user, isReadOnly }) => {
   const [detainedStudents, setDetainedStudents] = useState([]);
   const [batches, setBatches] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -169,71 +169,73 @@ const DetainedStudentsSetup = ({ user }) => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
         {/* Left Form Panel */}
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6 self-start">
-          <div>
-            <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider">
-              Register Detainment
-            </h2>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Force a student's record to align with a later batch.
-            </p>
-          </div>
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-bold text-slate-500">Student Roll Number</label>
-              <input
-                type="text"
-                placeholder="e.g. 23E51A0522"
-                value={formData.roll_number}
-                onChange={(e) => setFormData(prev => ({ ...prev, roll_number: e.target.value.toUpperCase() }))}
-                className="bg-slate-50 border border-slate-200 text-slate-700 text-sm font-semibold rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all placeholder:text-slate-300"
-                maxLength={10}
-                required
-              />
+        {!isReadOnly && (
+          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6 self-start">
+            <div>
+              <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider">
+                Register Detainment
+              </h2>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Force a student's record to align with a later batch.
+              </p>
             </div>
 
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-bold text-slate-500">New Detained Batch</label>
-              <select
-                value={formData.detained_to_batch}
-                onChange={(e) => setFormData(prev => ({ ...prev, detained_to_batch: e.target.value }))}
-                className="bg-slate-50 border border-slate-200 text-slate-700 text-sm font-semibold rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all cursor-pointer"
-                required
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-bold text-slate-500">Student Roll Number</label>
+                <input
+                  type="text"
+                  placeholder="e.g. 23E51A0522"
+                  value={formData.roll_number}
+                  onChange={(e) => setFormData(prev => ({ ...prev, roll_number: e.target.value.toUpperCase() }))}
+                  className="bg-slate-50 border border-slate-200 text-slate-700 text-sm font-semibold rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all placeholder:text-slate-300"
+                  maxLength={10}
+                  required
+                />
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-bold text-slate-500">New Detained Batch</label>
+                <select
+                  value={formData.detained_to_batch}
+                  onChange={(e) => setFormData(prev => ({ ...prev, detained_to_batch: e.target.value }))}
+                  className="bg-slate-50 border border-slate-200 text-slate-700 text-sm font-semibold rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all cursor-pointer"
+                  required
+                >
+                  {batches.length > 0 ? (
+                    batches.map((b) => (
+                      <option key={b.id} value={b.batch_year}>
+                        {b.batch_year}
+                      </option>
+                    ))
+                  ) : (
+                    <>
+                      <option value="2024-2028">2024-2028</option>
+                      <option value="2025-2029">2025-2029</option>
+                      <option value="2026-2030">2026-2030</option>
+                    </>
+                  )}
+                </select>
+              </div>
+
+              <button
+                type="submit"
+                disabled={submitting}
+                className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold py-3 px-4 rounded-xl shadow-md shadow-blue-500/10 cursor-pointer disabled:opacity-75 transition-all mt-6"
               >
-                {batches.length > 0 ? (
-                  batches.map((b) => (
-                    <option key={b.id} value={b.batch_year}>
-                      {b.batch_year}
-                    </option>
-                  ))
+                {submitting ? (
+                  <Loader2 size={16} className="animate-spin" />
                 ) : (
-                  <>
-                    <option value="2024-2028">2024-2028</option>
-                    <option value="2025-2029">2025-2029</option>
-                    <option value="2026-2030">2026-2030</option>
-                  </>
+                  <Plus size={16} />
                 )}
-              </select>
-            </div>
-
-            <button
-              type="submit"
-              disabled={submitting}
-              className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold py-3 px-4 rounded-xl shadow-md shadow-blue-500/10 cursor-pointer disabled:opacity-75 transition-all mt-6"
-            >
-              {submitting ? (
-                <Loader2 size={16} className="animate-spin" />
-              ) : (
-                <Plus size={16} />
-              )}
-              Register Student
-            </button>
-          </form>
-        </div>
+                Register Student
+              </button>
+            </form>
+          </div>
+        )}
 
         {/* Right Table Panel */}
-        <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col overflow-hidden">
+        <div className={`${isReadOnly ? 'lg:col-span-3' : 'lg:col-span-2'} bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col overflow-hidden`}>
           {/* Table Header Controls */}
           <div className="p-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="relative max-w-sm w-full">
@@ -266,7 +268,7 @@ const DetainedStudentsSetup = ({ user }) => {
                     <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">Student Details</th>
                     <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">Detained Batch</th>
                     <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">Added On</th>
-                    <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider text-right">Actions</th>
+                    {!isReadOnly && <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider text-right">Actions</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -302,15 +304,17 @@ const DetainedStudentsSetup = ({ user }) => {
                           })}
                         </div>
                       </td>
-                      <td className="px-6 py-4 text-right">
-                        <button
-                          onClick={() => handleDelete(student.roll_number)}
-                          className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all cursor-pointer"
-                          title="Restore original batch"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </td>
+                      {!isReadOnly && (
+                        <td className="px-6 py-4 text-right">
+                          <button
+                            onClick={() => handleDelete(student.roll_number)}
+                            className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all cursor-pointer"
+                            title="Restore original batch"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>

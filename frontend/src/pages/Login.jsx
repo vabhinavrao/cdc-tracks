@@ -41,17 +41,18 @@ const Login = ({ onLoginSuccess }) => {
 
   const demoAccounts = {
     full: [
-      { email: 'principal@gmail.com', name: 'Principal', desc: 'Full Access' },
-      { email: 'dean.careers@gmail.com', name: 'Dean (Careers)', desc: 'Full Access' },
-      { email: 'director@gmail.com', name: 'Director', desc: 'Full Access' },
-      { email: 'dean.academics@gmail.com', name: 'Dean (Academics)', desc: 'Full Access' },
-      { email: 'registrar@gmail.com', name: 'Registrar', desc: 'Full Access' },
-      { email: 'assistantdean.careers@gmail.com', name: 'Asst Dean (Careers)', desc: 'Full Access' },
+      { email: 'principal@gmail.com', name: 'Principal', desc: 'Principal Access' },
+      { email: 'dean.careers@gmail.com', name: 'Dean (Careers)', desc: 'Dean Careers Access' },
+      { email: 'director@gmail.com', name: 'Director', desc: 'Director Access' },
+      { email: 'dean.academics@gmail.com', name: 'Dean (Academics)', desc: 'Dean Academics Access' },
+      { email: 'registrar@gmail.com', name: 'Registrar', desc: 'Registrar Access' },
+      { email: 'assistantdean.careers@gmail.com', name: 'Asst Dean (Careers)', desc: 'Asst Dean Careers Access' },
       { email: 'cdc_admin@hitam.org', name: 'CDC Admin', desc: 'Full Access' }
     ],
     branch: [
       { email: 'cse.hod@gmail.com', name: 'CSE HOD', desc: 'Branch Access (CSE)' },
       { email: 'csm.hod@gmail.com', name: 'CSM HOD', desc: 'Branch Access (CSM)' },
+      { email: 'csd.hod@gmail.com', name: 'CSD HOD', desc: 'Branch Access (CSD)' },
       { email: 'ece.hod@gmail.com', name: 'ECE HOD', desc: 'Branch Access (ECE)' },
       { email: 'eee.hod@gmail.com', name: 'EEE HOD', desc: 'Branch Access (EEE)' },
       { email: 'mech.hod@gmail.com', name: 'MECH HOD', desc: 'Branch Access (MECH)' }

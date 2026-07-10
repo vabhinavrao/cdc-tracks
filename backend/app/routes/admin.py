@@ -30,12 +30,34 @@ def get_current_admin(authorization: Optional[str] = Header(None), db: Session =
     email = email.strip().lower()
     user = db.query(User).filter(User.email == email).first()
     
-    if not user or user.role not in ["super_admin", "branch_admin"]:
+    if not user or user.role not in ["super_admin", "branch_admin", "principal", "director", "registrar", "dean.academics"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access restricted to authorized admin users."
         )
     return user
+
+
+def get_latest_active_records(records: List[CDCPerformance]) -> List[CDCPerformance]:
+    grouped = {}
+    for r in records:
+        roll = (r.roll_number or "").strip().upper()
+        if not roll:
+            continue
+        if roll not in grouped:
+            grouped[roll] = []
+        grouped[roll].append(r)
+        
+    final_records = []
+    for roll, student_recs in grouped.items():
+        best_rec = None
+        for rec in sorted(student_recs, key=lambda x: x.academic_year or 0, reverse=True):
+            if rec.test_scores and len(rec.test_scores) > 0:
+                best_rec = rec
+                break
+        if best_rec:
+            final_records.append(best_rec)
+    return final_records
 
 @router.get("/analytics")
 def get_admin_analytics(
@@ -63,12 +85,7 @@ def get_admin_analytics(
         
     records = query.all()
     if not academic_year or academic_year.upper() == "ALL":
-        latest_years = {}
-        for r in records:
-            roll = r.roll_number
-            if roll not in latest_years or r.academic_year > latest_years[roll]:
-                latest_years[roll] = r.academic_year
-        records = [r for r in records if r.academic_year == latest_years[r.roll_number]]
+        records = get_latest_active_records(records)
     total_students = len(records)
     
     all_branches = [b[0] for b in db.query(CDCPerformance.branch).distinct().all() if b[0]]
@@ -86,9 +103,15 @@ def get_admin_analytics(
             "available_batches": sorted(all_batches)
         }
         
-    avg_perf = sum(r.avg_performance or 0 for r in records) / total_students
-    avg_cie = sum(r.cie_score or 0 for r in records) / total_students
-    avg_cons = sum(r.consistency_score or 0 for r in records) / total_students
+    active_records = [r for r in records if r.avg_performance is not None and r.avg_performance > 0]
+    if active_records:
+        avg_perf = sum(r.avg_performance for r in active_records) / len(active_records)
+        avg_cie = sum(r.cie_score or 0 for r in active_records) / len(active_records)
+        avg_cons = sum(r.consistency_score or 0 for r in active_records) / len(active_records)
+    else:
+        avg_perf = 0.0
+        avg_cie = 0.0
+        avg_cons = 0.0
     
     band_counts = {"A": 0, "B": 0, "C": 0, "D": 0, "Unassigned": 0}
     for r in records:
@@ -173,12 +196,7 @@ def get_admin_students(
     
     records = query.all()
     if not academic_year or academic_year.upper() == "ALL":
-        latest_years = {}
-        for r in records:
-            roll = r.roll_number
-            if roll not in latest_years or r.academic_year > latest_years[roll]:
-                latest_years[roll] = r.academic_year
-        records = [r for r in records if r.academic_year == latest_years[r.roll_number]]
+        records = get_latest_active_records(records)
     
     student_list = []
     for r in records:
@@ -205,20 +223,29 @@ def get_admin_students(
 @router.get("/student/{roll_number}")
 def get_admin_student_detail(
     roll_number: str,
+    academic_year: Optional[int] = Query(None),
     current_admin: User = Depends(get_current_admin),
     db: Session = Depends(get_db)
 ):
     clean_identifier = roll_number.strip()
     # Try matching by roll number first
-    record = db.query(CDCPerformance).filter(
+    query_roll = db.query(CDCPerformance).filter(
         func.upper(CDCPerformance.roll_number) == clean_identifier.upper()
-    ).order_by(CDCPerformance.academic_year.desc()).first()
+    )
+    if academic_year:
+        record = query_roll.filter(CDCPerformance.academic_year == academic_year).first()
+    else:
+        record = query_roll.order_by(CDCPerformance.academic_year.desc()).first()
     
     # Fallback to email search if not found
     if not record:
-        record = db.query(CDCPerformance).filter(
+        query_email = db.query(CDCPerformance).filter(
             func.lower(CDCPerformance.email) == clean_identifier.lower()
-        ).order_by(CDCPerformance.academic_year.desc()).first()
+        )
+        if academic_year:
+            record = query_email.filter(CDCPerformance.academic_year == academic_year).first()
+        else:
+            record = query_email.order_by(CDCPerformance.academic_year.desc()).first()
         
     if not record:
         raise HTTPException(status_code=404, detail=f"Student record '{roll_number}' not found.")
@@ -234,6 +261,15 @@ def get_admin_student_detail(
         (func.lower(User.email) == (record.email or "").lower())
     ).first()
     
+    # Fetch all available academic years for this student
+    all_years_query = db.query(CDCPerformance.academic_year).filter(
+        (func.upper(CDCPerformance.roll_number) == record.roll_number.upper()) |
+        (func.lower(CDCPerformance.email) == (record.email or "").lower())
+    )
+    all_years = [r[0] for r in all_years_query.distinct().all() if r[0] is not None]
+    if not all_years:
+        all_years = [record.academic_year]
+        
     from app.services.cdc_service import calculate_ranks, get_test_mappings
     ranks = calculate_ranks(db, record)
     test_mappings = get_test_mappings(db, record.batch_year, record.academic_year)
@@ -245,7 +281,9 @@ def get_admin_student_detail(
             "branch": record.branch,
             "email": record.email,
             "mobile": record.mobile,
-            "batch_year": record.batch_year
+            "batch_year": record.batch_year,
+            "academic_year": record.academic_year,
+            "available_years": sorted(all_years)
         },
         "overall": {
             "cdc_band": record.cdc_band,
@@ -302,12 +340,7 @@ def get_admin_detailed_analytics(
         
     records = query.all()
     if not academic_year or academic_year.upper() == "ALL":
-        latest_years = {}
-        for r in records:
-            roll = r.roll_number
-            if roll not in latest_years or r.academic_year > latest_years[roll]:
-                latest_years[roll] = r.academic_year
-        records = [r for r in records if r.academic_year == latest_years[r.roll_number]]
+        records = get_latest_active_records(records)
     total_students = len(records)
 
     if total_students == 0:
@@ -334,8 +367,71 @@ def get_admin_detailed_analytics(
             "alerts": []
         }
 
+    # Gather all test keys present in records
+    all_test_keys = set()
+    for r in records:
+        if r.test_scores:
+            all_test_keys.update(r.test_scores.keys())
+
+    import re
+    def extract_test_num(key):
+        m = re.search(r'test\s*(\d+)', key, re.IGNORECASE)
+        return int(m.group(1)) if m else 999
+
+    # Determine active target batch/year from the query filters or from the queried records
+    target_batch = batch_year
+    target_ac_year = None
+    if academic_year and academic_year.upper() != "ALL":
+        try:
+            target_ac_year = int(academic_year)
+        except ValueError:
+            pass
+
+    if not target_batch or target_batch.upper() == "ALL":
+        if records:
+            target_batch = records[0].batch_year
+    if target_ac_year is None:
+        if records:
+            target_ac_year = records[0].academic_year
+
+    from app.services.cdc_service import get_test_mappings
+    mappings = get_test_mappings(db, target_batch, target_ac_year) if target_batch and target_ac_year else {}
+    mapping_keys = list(mappings.keys()) if mappings else []
+
+    def sort_key_fn(k):
+        if k in mapping_keys:
+            return (0, mapping_keys.index(k))
+        else:
+            return (1, extract_test_num(k), k.lower())
+
+    sorted_test_keys = sorted(list(all_test_keys), key=sort_key_fn)
+    num_tests = len(sorted_test_keys)
+    if num_tests == 0:
+        num_tests = 30
+        sorted_test_keys = [f"Test {i}" for i in range(1, 31)]
+
+    # Dynamic post assessment indices
+    post_indices = []
+    for idx, key in enumerate(sorted_test_keys):
+        col_lower = key.lower()
+        if "post" in col_lower or "track name" in col_lower:
+            post_indices.append(idx)
+
+    # Dynamic semesters
+    def get_roman(num: int) -> str:
+        mapping = {1: "I", 2: "II", 3: "III", 4: "IV"}
+        return mapping.get(num, str(num))
+
+    ac_year_val = 2
+    if records:
+        ac_year_val = records[0].academic_year or 2
+    roman = get_roman(ac_year_val)
+    sem1_name = f"Semester {roman}-I"
+    sem2_name = f"Semester {roman}-II"
+    sem3_name = f"Semester {roman}-III"
+
     # Aggregate metric cards
-    total_possible_tests = total_students * 30
+    total_possible_tests = total_students * num_tests
     total_attempted_tests = 0
     total_perf = 0.0
     total_grade_score = 0.0
@@ -343,11 +439,11 @@ def get_admin_detailed_analytics(
 
     band_counts = {"A": 0, "B": 0, "C": 0, "D": 0}
     
-    # Track scores per test (1 to 30) across batch
-    test_score_sums = [0.0] * 30
-    test_score_counts = [0] * 30
-    test_score_maxs = [0.0] * 30
-    test_score_mins = [100.0] * 30
+    # Track scores per test across batch
+    test_score_sums = [0.0] * num_tests
+    test_score_counts = [0] * num_tests
+    test_score_maxs = [0.0] * num_tests
+    test_score_mins = [100.0] * num_tests
 
     # Distribute test scores across standard performance buckets
     dist_excellent = 0
@@ -356,7 +452,7 @@ def get_admin_detailed_analytics(
     dist_unattempted = 0
 
     # Semester scores accumulator
-    sem_scores = {"Semester II-I": [], "Semester II-II": [], "Semester II-III": []}
+    sem_scores = {sem1_name: [], sem2_name: [], sem3_name: []}
     post1_scores = []
     post2_scores = []
 
@@ -383,24 +479,18 @@ def get_admin_detailed_analytics(
         raw_scores = r.test_scores or {}
         student_attempted_count = 0
 
-        for t_idx in range(1, 31):
-            key = f"Test {t_idx}"
+        for t_idx, key in enumerate(sorted_test_keys):
             val = raw_scores.get(key)
-            if val is None and t_idx == 9:
-                val = raw_scores.get("Post Assess. I") or (r.post_assessments or {}).get("Post Assessment II-I")
-            if val is None and t_idx == 23:
-                val = raw_scores.get("Post Assess. II") or (r.post_assessments or {}).get("Post Assessment II-II")
-
             if val is not None and str(val).strip() != '':
                 try:
                     score_num = float(val)
                     student_attempted_count += 1
-                    test_score_sums[t_idx - 1] += score_num
-                    test_score_counts[t_idx - 1] += 1
-                    if score_num > test_score_maxs[t_idx - 1]:
-                        test_score_maxs[t_idx - 1] = score_num
-                    if score_num < test_score_mins[t_idx - 1]:
-                        test_score_mins[t_idx - 1] = score_num
+                    test_score_sums[t_idx] += score_num
+                    test_score_counts[t_idx] += 1
+                    if score_num > test_score_maxs[t_idx]:
+                        test_score_maxs[t_idx] = score_num
+                    if score_num < test_score_mins[t_idx]:
+                        test_score_mins[t_idx] = score_num
 
                     if score_num >= 80:
                         dist_excellent += 1
@@ -409,16 +499,29 @@ def get_admin_detailed_analytics(
                     else:
                         dist_needs_imp += 1
 
-                    if t_idx <= 10:
-                        sem_scores["Semester II-I"].append(score_num)
-                    elif t_idx <= 20:
-                        sem_scores["Semester II-II"].append(score_num)
+                    # Group semesters dynamically based on post assessments
+                    if len(post_indices) >= 2:
+                        if t_idx <= post_indices[0]:
+                            sem_scores[sem1_name].append(score_num)
+                        elif t_idx <= post_indices[1]:
+                            sem_scores[sem2_name].append(score_num)
+                        else:
+                            sem_scores[sem3_name].append(score_num)
+                    elif len(post_indices) == 1:
+                        if t_idx <= post_indices[0]:
+                            sem_scores[sem1_name].append(score_num)
+                        else:
+                            sem_scores[sem2_name].append(score_num)
                     else:
-                        sem_scores["Semester II-III"].append(score_num)
+                        if t_idx < num_tests / 2:
+                            sem_scores[sem1_name].append(score_num)
+                        else:
+                            sem_scores[sem2_name].append(score_num)
 
-                    if t_idx == 9:
+                    # Post assessments scores
+                    if len(post_indices) >= 1 and t_idx == post_indices[0]:
                         post1_scores.append(score_num)
-                    if t_idx == 23:
+                    if len(post_indices) >= 2 and t_idx == post_indices[1]:
                         post2_scores.append(score_num)
 
                 except ValueError:
@@ -427,8 +530,8 @@ def get_admin_detailed_analytics(
                 dist_unattempted += 1
 
         total_attempted_tests += student_attempted_count
-        student_unattempted = 30 - student_attempted_count
-        part_rate = (student_attempted_count / 30.0) * 100.0
+        student_unattempted = num_tests - student_attempted_count
+        part_rate = (student_attempted_count / float(num_tests)) * 100.0 if num_tests > 0 else 0.0
         total_part_pct += part_rate
 
         # Alert checks
@@ -437,30 +540,45 @@ def get_admin_detailed_analytics(
         if student_unattempted > 10:
             students_high_unattempted += 1
         
-        p2_val = raw_scores.get("Test 23") or raw_scores.get("Post Assess. II") or (r.post_assessments or {}).get("Post Assessment II-II")
+        # Check if latest post assessment is pending
+        p2_idx = post_indices[1] if len(post_indices) >= 2 else (post_indices[0] if len(post_indices) >= 1 else -1)
+        p2_key = sorted_test_keys[p2_idx] if p2_idx != -1 else None
+        p2_val = raw_scores.get(p2_key) if p2_key else None
         if p2_val is None or str(p2_val).strip() == '':
             students_post2_pending += 1
 
-    avg_performance = round(total_perf / total_students, 2)
-    avg_cdc_grade_score = round(total_grade_score / total_students, 2)
-    overall_part_rate = round(total_part_pct / total_students, 2)
-    avg_tests_per_student = round(total_attempted_tests / total_students, 1)
+    active_students_count = sum(1 for r in records if r.avg_performance is not None and r.avg_performance > 0)
+    if active_students_count > 0:
+        avg_performance = round(total_perf / active_students_count, 2)
+        avg_cdc_grade_score = round(total_grade_score / active_students_count, 2)
+        overall_part_rate = round(total_part_pct / active_students_count, 2)
+        avg_tests_per_student = round(total_attempted_tests / active_students_count, 1)
+    else:
+        avg_performance = 0.0
+        avg_cdc_grade_score = 0.0
+        overall_part_rate = 0.0
+        avg_tests_per_student = 0.0
 
     # Top band calculation
-    top_band = max(band_counts, key=band_counts.get)
-    top_band_pct = round((band_counts[top_band] / total_students) * 100, 1)
+    top_band = max(band_counts, key=band_counts.get) if band_counts else "B"
+    top_band_pct = round((band_counts[top_band] / total_students) * 100, 1) if total_students > 0 else 0.0
 
     # Performance trend list
     trend_data = []
-    for i in range(30):
+    for i, key in enumerate(sorted_test_keys):
         t_num = i + 1
         cnt = test_score_counts[i]
         avg_s = round(test_score_sums[i] / cnt, 2) if cnt > 0 else round(avg_performance, 2)
         top_s = round(test_score_maxs[i], 2) if cnt > 0 else round(avg_performance + 10, 2)
         low_s = round(test_score_mins[i], 2) if cnt > 0 else round(avg_performance - 15, 2)
-        label = f"Test {t_num}"
-        if t_num == 9: label = "Post Assessment I"
-        if t_num == 23: label = "Post Assessment II"
+        
+        # Dynamic label
+        label = key
+        if len(post_indices) >= 1 and i == post_indices[0]:
+            label = "Post Assessment I"
+        elif len(post_indices) >= 2 and i == post_indices[1]:
+            label = "Post Assessment II"
+            
         trend_data.append({
             "test_num": t_num, 
             "label": label, 
@@ -713,6 +831,8 @@ def save_batch_schedule(
     current_admin: User = Depends(get_current_admin),
     db: Session = Depends(get_db)
 ):
+    if current_admin.role in ["principal", "director", "registrar"]:
+        raise HTTPException(status_code=403, detail="Principal/Director/Registrar has read-only access.")
     bs = db.query(BatchSchedule).filter(BatchSchedule.batch_year == payload.batch_year.strip()).first()
     
     def parse_dt(dt_str, is_end=False):
@@ -766,6 +886,8 @@ def promote_batches(
     current_admin: User = Depends(get_current_admin),
     db: Session = Depends(get_db)
 ):
+    if current_admin.role in ["principal", "director", "registrar", "dean.academics"]:
+        raise HTTPException(status_code=403, detail="Read-only access for this role.")
     users = db.query(User).filter(User.role == "student").all()
     promoted_count = 0
     alumni_count = 0
@@ -852,12 +974,7 @@ def export_batch_xlsx(
     if clean_batch != "ALL":
         cdc_query = cdc_query.filter(CDCPerformance.batch_year == clean_batch)
     records = cdc_query.all()
-    latest_years = {}
-    for r in records:
-        roll = r.roll_number
-        if roll not in latest_years or r.academic_year > latest_years[roll]:
-            latest_years[roll] = r.academic_year
-    records = [r for r in records if r.academic_year == latest_years[r.roll_number]]
+    records = get_latest_active_records(records)
 
     students_data = []
     for r in records:
@@ -1079,6 +1196,8 @@ def update_hitam_request_status(
     current_admin: User = Depends(get_current_admin),
     db: Session = Depends(get_db)
 ):
+    if current_admin.role in ["principal", "director", "registrar", "dean.academics"]:
+        raise HTTPException(status_code=403, detail="Read-only access for this role.")
     req = db.query(HitamProjectRequest).filter(HitamProjectRequest.id == request_id).first()
     if not req:
         raise HTTPException(status_code=404, detail="HITAM project request not found.")
@@ -1166,6 +1285,8 @@ def update_internship_request_status(
     current_admin: User = Depends(get_current_admin),
     db: Session = Depends(get_db)
 ):
+    if current_admin.role in ["principal", "director", "registrar", "dean.academics"]:
+        raise HTTPException(status_code=403, detail="Read-only access for this role.")
     req = db.query(InternshipRequest).filter(InternshipRequest.id == request_id).first()
     if not req:
         raise HTTPException(status_code=404, detail="Internship request not found.")
@@ -1226,6 +1347,8 @@ def add_google_sheet_connection(
     current_admin: User = Depends(get_current_admin),
     db: Session = Depends(get_db)
 ):
+    if current_admin.role in ["principal", "director", "registrar", "dean.academics"]:
+        raise HTTPException(status_code=403, detail="Read-only access for this role.")
     sheet_type = payload.sheet_type.strip().lower()
     if sheet_type not in ["overall_marks", "domain_info", "semester_projects", "finalised_domains"]:
         raise HTTPException(status_code=400, detail="sheet_type must be overall_marks, domain_info, semester_projects, or finalised_domains")
@@ -1255,6 +1378,8 @@ def update_google_sheet_connection(
     current_admin: User = Depends(get_current_admin),
     db: Session = Depends(get_db)
 ):
+    if current_admin.role in ["principal", "director", "registrar", "dean.academics"]:
+        raise HTTPException(status_code=403, detail="Read-only access for this role.")
     conn = db.query(GoogleSheetConnection).filter(GoogleSheetConnection.id == conn_id).first()
     if not conn:
         raise HTTPException(status_code=404, detail="Connection not found")
@@ -1285,6 +1410,8 @@ def delete_google_sheet_connection(
     current_admin: User = Depends(get_current_admin),
     db: Session = Depends(get_db)
 ):
+    if current_admin.role in ["principal", "director", "registrar", "dean.academics"]:
+        raise HTTPException(status_code=403, detail="Read-only access for this role.")
     conn = db.query(GoogleSheetConnection).filter(GoogleSheetConnection.id == conn_id).first()
     if not conn:
         raise HTTPException(status_code=404, detail="Connection not found")
@@ -1304,6 +1431,8 @@ def analyze_google_sheet_endpoint(
     current_admin: User = Depends(get_current_admin),
     db: Session = Depends(get_db)
 ):
+    if current_admin.role in ["principal", "director", "registrar", "dean.academics"]:
+        raise HTTPException(status_code=403, detail="Read-only access for this role.")
     try:
         import gspread
         from google.oauth2.service_account import Credentials
@@ -1387,6 +1516,8 @@ def sync_google_sheet_connection_endpoint(
     current_admin: User = Depends(get_current_admin),
     db: Session = Depends(get_db)
 ):
+    if current_admin.role in ["principal", "director", "registrar", "dean.academics"]:
+        raise HTTPException(status_code=403, detail="Read-only access for this role.")
     from app.services.google_sheets_sync import sync_google_sheet_connection
     res = sync_google_sheet_connection(db, conn_id)
     if not res["success"]:
@@ -1420,6 +1551,8 @@ def add_detained_student(
     current_admin: User = Depends(get_current_admin),
     db: Session = Depends(get_db)
 ):
+    if current_admin.role in ["principal", "director", "registrar", "dean.academics"]:
+        raise HTTPException(status_code=403, detail="Read-only access for this role.")
     import re
     roll = payload.roll_number.strip().upper()
     batch = payload.detained_to_batch.strip()
@@ -1475,6 +1608,8 @@ def remove_detained_student(
     current_admin: User = Depends(get_current_admin),
     db: Session = Depends(get_db)
 ):
+    if current_admin.role in ["principal", "director", "registrar", "dean.academics"]:
+        raise HTTPException(status_code=403, detail="Read-only access for this role.")
     roll = roll_number.strip().upper()
     
     det_entry = db.query(DetainedStudent).filter(DetainedStudent.roll_number == roll).first()

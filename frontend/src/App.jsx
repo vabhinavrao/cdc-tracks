@@ -1,6 +1,6 @@
 // src/App.jsx
 import { useState } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import TopNav from './components/layout/TopNav';
 import ExploreTracks from './pages/ExploreTracks';
 import TrackDetails from './pages/TrackDetails';
@@ -35,14 +35,28 @@ const Profile = ({ user, onLogout }) => {
           )}
           <h2 className="text-2xl font-bold text-slate-800">{user.name || 'Profile'}</h2>
           <p className="text-slate-500 text-sm mt-1">
-            {user.role === 'super_admin' ? 'CDC Administrator & Management' : user.role === 'branch_admin' ? `Branch HOD (${user.assigned_branch})` : 'Academic & Curriculum Identity'}
+            {user.role === 'super_admin' ? 'CDC Administrator & Management'
+              : user.role === 'branch_admin' ? `Branch HOD (${user.assigned_branch})`
+              : user.role === 'principal' ? 'Principal — Academic Leadership'
+              : user.role === 'director' ? 'Director — Institutional Leadership'
+              : user.role === 'registrar' ? 'Registrar — Academic Records'
+              : user.role === 'dean.academics' ? 'Dean of Academics'
+              : 'Academic & Curriculum Identity'}
           </p>
         </div>
 
         <div className="space-y-4 border-t border-slate-100 pt-6">
           <div className="flex justify-between py-2 border-b border-slate-50">
             <span className="text-sm font-semibold text-slate-500">System Role</span>
-            <span className="text-sm font-bold text-blue-600 uppercase">{user.role || 'student'}</span>
+            <span className="text-sm font-bold text-blue-600 uppercase">
+              {user.role === 'super_admin' ? 'Admin'
+                : user.role === 'branch_admin' ? 'Branch Admin'
+                : user.role === 'principal' ? 'Principal'
+                : user.role === 'director' ? 'Director'
+                : user.role === 'registrar' ? 'Registrar'
+                : user.role === 'dean.academics' ? 'Dean (Academics)'
+                : (user.role || 'Student')}
+            </span>
           </div>
           <div className="flex justify-between py-2 border-b border-slate-50">
             <span className="text-sm font-semibold text-slate-500">Email Address</span>
@@ -67,6 +81,76 @@ const Profile = ({ user, onLogout }) => {
   );
 };
 
+function AppContent({ user, setUser, handleLogout, isAdmin }) {
+  const location = useLocation();
+  const isAdminDashboard = location.pathname === '/admin-dashboard';
+
+  const handleLoginSuccess = (profile) => {
+    setUser(profile);
+    localStorage.setItem('student_profile', JSON.stringify(profile));
+  };
+
+  return (
+    <div className={`min-h-screen bg-slate-50 text-slate-900 font-sans ${isAdminDashboard ? '' : 'pb-12'}`}>
+      <TopNav user={user} onLogout={handleLogout} />
+      <main className={isAdminDashboard ? 'w-full mx-auto' : 'max-w-[1700px] mx-auto pt-6 px-4 sm:px-6 lg:px-8'}>
+        <Routes>
+          {/* Explore page remains public */}
+          <Route path="/" element={<ExploreTracks user={user} />} />
+          <Route path="/multi-stack-projects" element={<MultiStackProjects user={user} />} />
+          
+          {/* Login Route */}
+          <Route 
+            path="/login" 
+            element={
+              user 
+                ? <Navigate to={isAdmin ? "/admin-dashboard" : "/dashboard"} replace /> 
+                : <Login onLoginSuccess={handleLoginSuccess} />
+            } 
+          />
+
+          {/* Admin Dashboard Route */}
+          <Route 
+            path="/admin-dashboard" 
+            element={
+              user ? (isAdmin ? <AdminDashboard user={user} /> : <Navigate to="/dashboard" replace />) : <Navigate to="/login" replace />
+            } 
+          />
+
+          {/* Private Routes requiring Authentication */}
+          <Route 
+            path="/track/:slug" 
+            element={<TrackDetails user={user} />} 
+          />
+          <Route 
+            path="/dashboard" 
+            element={
+              user ? (isAdmin ? <Navigate to="/admin-dashboard" replace /> : <Dashboard user={user} />) : <Navigate to="/login" replace />
+            } 
+          />
+          {/* <Route 
+            path="/internships" 
+            element={
+              user ? <Internships user={user} /> : <Navigate to="/login" replace />
+            } 
+          /> */}
+          <Route 
+            path="/cdc-dashboard" 
+            element={user ? <CDCDashboard user={user} /> : <Navigate to="/login" replace />} 
+          />
+          <Route 
+            path="/profile" 
+            element={user ? <Profile user={user} onLogout={handleLogout} /> : <Navigate to="/login" replace />} 
+          />
+
+          {/* Fallback routing */}
+          <Route path="*" element={<Navigate to={isAdmin ? "/admin-dashboard" : "/"} replace />} />
+        </Routes>
+      </main>
+    </div>
+  );
+}
+
 function App() {
   const [user, setUser] = useState(() => {
     try {
@@ -78,77 +162,21 @@ function App() {
     }
   });
 
-  const handleLoginSuccess = (profile) => {
-    setUser(profile);
-    localStorage.setItem('student_profile', JSON.stringify(profile));
-  };
-
   const handleLogout = () => {
     setUser(null);
     localStorage.removeItem('student_profile');
   };
 
-  const isAdmin = user?.role === 'super_admin' || user?.role === 'branch_admin';
+  const isAdmin = user?.role === 'super_admin' || user?.role === 'branch_admin' || user?.role === 'principal' || user?.role === 'director' || user?.role === 'registrar' || user?.role === 'dean.academics';
 
   return (
     <BrowserRouter>
-      <div className="min-h-screen bg-slate-50 text-slate-900 font-sans pb-12">
-        <TopNav user={user} onLogout={handleLogout} />
-        <main className="max-w-[1700px] mx-auto pt-6 px-4 sm:px-6 lg:px-8">
-          <Routes>
-            {/* Explore page remains public */}
-            <Route path="/" element={<ExploreTracks user={user} />} />
-            <Route path="/multi-stack-projects" element={<MultiStackProjects user={user} />} />
-            
-            {/* Login Route */}
-            <Route 
-              path="/login" 
-              element={
-                user 
-                  ? <Navigate to={isAdmin ? "/admin-dashboard" : "/dashboard"} replace /> 
-                  : <Login onLoginSuccess={handleLoginSuccess} />
-              } 
-            />
-
-            {/* Admin Dashboard Route */}
-            <Route 
-              path="/admin-dashboard" 
-              element={
-                user ? (isAdmin ? <AdminDashboard user={user} /> : <Navigate to="/dashboard" replace />) : <Navigate to="/login" replace />
-              } 
-            />
-
-            {/* Private Routes requiring Authentication */}
-            <Route 
-              path="/track/:slug" 
-              element={<TrackDetails user={user} />} 
-            />
-            <Route 
-              path="/dashboard" 
-              element={
-                user ? (isAdmin ? <Navigate to="/admin-dashboard" replace /> : <Dashboard user={user} />) : <Navigate to="/login" replace />
-              } 
-            />
-            {/* <Route 
-              path="/internships" 
-              element={
-                user ? <Internships user={user} /> : <Navigate to="/login" replace />
-              } 
-            /> */}
-            <Route 
-              path="/cdc-dashboard" 
-              element={user ? <CDCDashboard user={user} /> : <Navigate to="/login" replace />} 
-            />
-            <Route 
-              path="/profile" 
-              element={user ? <Profile user={user} onLogout={handleLogout} /> : <Navigate to="/login" replace />} 
-            />
-
-            {/* Fallback routing */}
-            <Route path="*" element={<Navigate to={isAdmin ? "/admin-dashboard" : "/"} replace />} />
-          </Routes>
-        </main>
-      </div>
+      <AppContent 
+        user={user} 
+        setUser={setUser} 
+        handleLogout={handleLogout} 
+        isAdmin={isAdmin} 
+      />
     </BrowserRouter>
   );
 }

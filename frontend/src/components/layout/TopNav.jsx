@@ -1,12 +1,14 @@
 // src/components/layout/TopNav.jsx
 import { useState } from 'react';
-import { NavLink, Link } from 'react-router-dom';
+import { useLocation, NavLink, Link } from 'react-router-dom';
 import { Home, Compass, LayoutDashboard, User, LogOut, LogIn, Award, Menu, X, Sparkles, Briefcase } from 'lucide-react';
 
 import cdcLogo from '../../assets/CDC-logo.png';
 
 const TopNav = ({ user, onLogout }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const location = useLocation();
+  const isAdminDashboard = location.pathname === '/admin-dashboard';
 
   // Helper function to dynamically apply Tailwind classes based on active state
   const navLinkClass = ({ isActive }) =>
@@ -27,7 +29,7 @@ const TopNav = ({ user, onLogout }) => {
 
   return (
     <nav className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-sm">
-      <div className="max-w-[1700px] mx-auto px-4 sm:px-6 lg:px-8">
+      <div className={`${isAdminDashboard ? 'max-w-none px-6' : 'max-w-[1700px] px-4 sm:px-6 lg:px-8'} mx-auto`}>
         <div className="flex justify-between items-center h-16">
           
           {/* Brand / Logo */}
@@ -58,7 +60,7 @@ const TopNav = ({ user, onLogout }) => {
             {user ? (
               <>
                 {/* Authenticated Links */}
-                {user.role === 'super_admin' || user.role === 'branch_admin' ? (
+                {user.role === 'super_admin' || user.role === 'branch_admin' || user.role === 'principal' || user.role === 'director' || user.role === 'registrar' || user.role === 'dean.academics' ? (
                   <NavLink to="/admin-dashboard" className={navLinkClass}>
                     <LayoutDashboard size={16} />
                     <span>Overview</span>
@@ -144,7 +146,7 @@ const TopNav = ({ user, onLogout }) => {
 
           {user ? (
             <>
-              {user.role === 'super_admin' || user.role === 'branch_admin' ? (
+              {user.role === 'super_admin' || user.role === 'branch_admin' || user.role === 'principal' || user.role === 'director' || user.role === 'registrar' || user.role === 'dean.academics' ? (
                 <NavLink to="/admin-dashboard" className={mobileNavLinkClass} onClick={closeMobileMenu}>
                   <LayoutDashboard size={20} />
                   <span>Admin Overview</span>

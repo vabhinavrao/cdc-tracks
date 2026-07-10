@@ -9,7 +9,7 @@ import {
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
-const TrackBatchControlPanel = ({ user }) => {
+const TrackBatchControlPanel = ({ user, isReadOnly }) => {
   const [activeSubTab, setActiveSubTab] = useState('windows'); // 'windows' | 'schedules' | 'promotion' | 'audit'
   const [schedules, setSchedules] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
@@ -228,13 +228,15 @@ const TrackBatchControlPanel = ({ user }) => {
             </select>
           </div>
 
-          <button
-            onClick={() => setShowNewBatchModal(true)}
-            className="flex items-center gap-1.5 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-2xl transition-all cursor-pointer shadow-sm"
-          >
-            <Plus size={16} />
-            <span>New Batch</span>
-          </button>
+          {!isReadOnly && (
+            <button
+              onClick={() => setShowNewBatchModal(true)}
+              className="flex items-center gap-1.5 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-2xl transition-all cursor-pointer shadow-sm"
+            >
+              <Plus size={16} />
+              <span>New Batch</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -305,6 +307,7 @@ const TrackBatchControlPanel = ({ user }) => {
                 value={formSchedule.track_selection_start ? formSchedule.track_selection_start.slice(0, 16) : ''}
                 onChange={(e) => setFormSchedule({ ...formSchedule, track_selection_start: e.target.value })}
                 className="w-full px-4 py-2.5 rounded-2xl border border-slate-200 text-xs font-bold focus:border-blue-500 outline-none"
+                disabled={isReadOnly}
               />
             </div>
 
@@ -315,6 +318,7 @@ const TrackBatchControlPanel = ({ user }) => {
                 value={formSchedule.track_selection_end ? formSchedule.track_selection_end.slice(0, 16) : ''}
                 onChange={(e) => setFormSchedule({ ...formSchedule, track_selection_end: e.target.value })}
                 className="w-full px-4 py-2.5 rounded-2xl border border-slate-200 text-xs font-bold focus:border-blue-500 outline-none"
+                disabled={isReadOnly}
               />
             </div>
 
@@ -329,6 +333,7 @@ const TrackBatchControlPanel = ({ user }) => {
                   placeholder="support.cdc@hitam.org"
                   className="w-full pl-10 pr-4 py-2.5 rounded-2xl border border-slate-200 text-xs font-bold focus:border-blue-500 outline-none"
                   required
+                  disabled={isReadOnly}
                 />
               </div>
             </div>
@@ -347,6 +352,7 @@ const TrackBatchControlPanel = ({ user }) => {
                   value={formSchedule.project_selection_start ? formSchedule.project_selection_start.slice(0, 16) : ''}
                   onChange={(e) => setFormSchedule({ ...formSchedule, project_selection_start: e.target.value })}
                   className="w-full px-4 py-2.5 rounded-2xl border border-slate-200 text-xs font-bold focus:border-indigo-500 outline-none"
+                  disabled={isReadOnly}
                 />
               </div>
               <div>
@@ -356,6 +362,7 @@ const TrackBatchControlPanel = ({ user }) => {
                   value={formSchedule.project_selection_end ? formSchedule.project_selection_end.slice(0, 16) : ''}
                   onChange={(e) => setFormSchedule({ ...formSchedule, project_selection_end: e.target.value })}
                   className="w-full px-4 py-2.5 rounded-2xl border border-slate-200 text-xs font-bold focus:border-indigo-500 outline-none"
+                  disabled={isReadOnly}
                 />
               </div>
             </div>
@@ -368,14 +375,16 @@ const TrackBatchControlPanel = ({ user }) => {
             </p>
           </div>
 
-          <div className="flex justify-end pt-2">
-            <button
-              type="submit"
-              className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white text-xs font-extrabold rounded-2xl shadow-md shadow-blue-500/20 cursor-pointer transition-all"
-            >
-              Save Track Window Settings
-            </button>
-          </div>
+          {!isReadOnly && (
+            <div className="flex justify-end pt-2">
+              <button
+                type="submit"
+                className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white text-xs font-extrabold rounded-2xl shadow-md shadow-blue-500/20 cursor-pointer transition-all"
+              >
+                Save Track Window Settings
+              </button>
+            </div>
+          )}
         </form>
       )}
 
@@ -406,6 +415,7 @@ const TrackBatchControlPanel = ({ user }) => {
                       value={formSchedule[`year_${yr}_start`] || ''}
                       onChange={(e) => setFormSchedule({ ...formSchedule, [`year_${yr}_start`]: e.target.value })}
                       className="w-full px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold bg-white"
+                      disabled={isReadOnly}
                     />
                   </div>
                   <div>
@@ -415,6 +425,7 @@ const TrackBatchControlPanel = ({ user }) => {
                       value={formSchedule[`year_${yr}_end`] || ''}
                       onChange={(e) => setFormSchedule({ ...formSchedule, [`year_${yr}_end`]: e.target.value })}
                       className="w-full px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold bg-white"
+                      disabled={isReadOnly}
                     />
                   </div>
                 </div>
@@ -436,6 +447,7 @@ const TrackBatchControlPanel = ({ user }) => {
                       value={formSchedule.sem_1_start || ''}
                       onChange={(e) => setFormSchedule({ ...formSchedule, sem_1_start: e.target.value })}
                       className="w-full px-3 py-1.5 rounded-xl border border-blue-200 text-xs font-semibold bg-white"
+                      disabled={isReadOnly}
                     />
                   </div>
                   <div>
@@ -445,6 +457,7 @@ const TrackBatchControlPanel = ({ user }) => {
                       value={formSchedule.sem_1_end || ''}
                       onChange={(e) => setFormSchedule({ ...formSchedule, sem_1_end: e.target.value })}
                       className="w-full px-3 py-1.5 rounded-xl border border-blue-200 text-xs font-semibold bg-white"
+                      disabled={isReadOnly}
                     />
                   </div>
                 </div>
@@ -460,6 +473,7 @@ const TrackBatchControlPanel = ({ user }) => {
                       value={formSchedule.sem_2_start || ''}
                       onChange={(e) => setFormSchedule({ ...formSchedule, sem_2_start: e.target.value })}
                       className="w-full px-3 py-1.5 rounded-xl border border-emerald-200 text-xs font-semibold bg-white"
+                      disabled={isReadOnly}
                     />
                   </div>
                   <div>
@@ -469,6 +483,7 @@ const TrackBatchControlPanel = ({ user }) => {
                       value={formSchedule.sem_2_end || ''}
                       onChange={(e) => setFormSchedule({ ...formSchedule, sem_2_end: e.target.value })}
                       className="w-full px-3 py-1.5 rounded-xl border border-emerald-200 text-xs font-semibold bg-white"
+                      disabled={isReadOnly}
                     />
                   </div>
                 </div>
@@ -477,12 +492,14 @@ const TrackBatchControlPanel = ({ user }) => {
           </div>
 
           <div className="flex justify-end pt-2">
-            <button
-              type="submit"
-              className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white text-xs font-extrabold rounded-2xl shadow-md cursor-pointer transition-all"
-            >
-              Save Academic Timeline
-            </button>
+            {!isReadOnly && (
+              <button
+                type="submit"
+                className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white text-xs font-extrabold rounded-2xl shadow-md cursor-pointer transition-all"
+              >
+                Save Academic Timeline
+              </button>
+            )}
           </div>
         </form>
       )}
@@ -502,13 +519,15 @@ const TrackBatchControlPanel = ({ user }) => {
               </p>
             </div>
 
-            <button
-              onClick={handleRunPromotion}
-              className="flex items-center gap-2 px-6 py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold rounded-2xl shadow-lg shadow-emerald-500/20 cursor-pointer shrink-0 transition-all"
-            >
-              <RefreshCw size={16} />
-              <span>Run Promotion Check Now</span>
-            </button>
+            {!isReadOnly && (
+              <button
+                onClick={handleRunPromotion}
+                className="flex items-center gap-2 px-6 py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold rounded-2xl shadow-lg shadow-emerald-500/20 cursor-pointer shrink-0 transition-all"
+              >
+                <RefreshCw size={16} />
+                <span>Run Promotion Check Now</span>
+              </button>
+            )}
           </div>
 
           {/* Batch Lifecycle Data Operations Table */}

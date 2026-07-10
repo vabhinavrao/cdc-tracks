@@ -8,7 +8,7 @@ import {
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
-const GoogleSheetsSetup = ({ user }) => {
+const GoogleSheetsSetup = ({ user, isReadOnly }) => {
   const [connections, setConnections] = useState([]);
   const [batches, setBatches] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -439,13 +439,15 @@ const GoogleSheetsSetup = ({ user }) => {
             </p>
           </div>
         </div>
-        <button
-          onClick={handleOpenAddModal}
-          className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl text-xs font-bold transition-all shadow-md shadow-blue-500/20 shrink-0 cursor-pointer self-start sm:self-center"
-        >
-          <Plus size={16} />
-          <span>Connect New Sheet</span>
-        </button>
+        {!isReadOnly && (
+          <button
+            onClick={handleOpenAddModal}
+            className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl text-xs font-bold transition-all shadow-md shadow-blue-500/20 shrink-0 cursor-pointer self-start sm:self-center"
+          >
+            <Plus size={16} />
+            <span>Connect New Sheet</span>
+          </button>
+        )}
       </div>
 
       {/* Action Messages */}
@@ -510,7 +512,7 @@ const GoogleSheetsSetup = ({ user }) => {
                   <th className="py-4 px-6">Google Sheet Link</th>
                   <th className="py-4 px-6">Mappings</th>
                   <th className="py-4 px-6">Sync Status</th>
-                  <th className="py-4 px-6 text-center">Actions</th>
+                  {!isReadOnly && <th className="py-4 px-6 text-center">Actions</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-sm">
@@ -570,33 +572,35 @@ const GoogleSheetsSetup = ({ user }) => {
                         )}
                       </div>
                     </td>
-                    <td className="py-4 px-6">
-                      <div className="flex items-center justify-center gap-2">
-                        <button
-                          onClick={() => handleSync(conn.id)}
-                          disabled={syncingId !== null}
-                          className="p-2 bg-slate-900 text-white hover:bg-slate-800 disabled:bg-slate-300 rounded-xl transition-all cursor-pointer shadow-sm flex items-center gap-1.5 text-xs font-bold"
-                          title="Trigger Live Sync"
-                        >
-                          <RefreshCw size={14} className={syncingId === conn.id ? 'animate-spin' : ''} />
-                          <span>{syncingId === conn.id ? 'Syncing...' : 'Sync'}</span>
-                        </button>
-                        <button
-                          onClick={() => handleOpenEditModal(conn)}
-                          className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition-colors cursor-pointer"
-                          title="Edit Connection"
-                        >
-                          <Edit2 size={14} />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(conn.id)}
-                          className="p-2 bg-rose-50 hover:bg-rose-600 text-rose-600 hover:text-white rounded-xl transition-colors cursor-pointer"
-                          title="Delete Connection"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    </td>
+                    {!isReadOnly && (
+                      <td className="py-4 px-6">
+                        <div className="flex items-center justify-center gap-2">
+                          <button
+                            onClick={() => handleSync(conn.id)}
+                            disabled={syncingId !== null}
+                            className="p-2 bg-slate-900 text-white hover:bg-slate-800 disabled:bg-slate-300 rounded-xl transition-all cursor-pointer shadow-sm flex items-center gap-1.5 text-xs font-bold"
+                            title="Trigger Live Sync"
+                          >
+                            <RefreshCw size={14} className={syncingId === conn.id ? 'animate-spin' : ''} />
+                            <span>{syncingId === conn.id ? 'Syncing...' : 'Sync'}</span>
+                          </button>
+                          <button
+                            onClick={() => handleOpenEditModal(conn)}
+                            className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition-colors cursor-pointer"
+                            title="Edit Connection"
+                          >
+                            <Edit2 size={14} />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(conn.id)}
+                            className="p-2 bg-rose-50 hover:bg-rose-600 text-rose-600 hover:text-white rounded-xl transition-colors cursor-pointer"
+                            title="Delete Connection"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>

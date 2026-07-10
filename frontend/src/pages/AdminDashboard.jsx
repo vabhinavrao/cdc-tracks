@@ -27,6 +27,17 @@ const shortenTestName = (name) => {
 };
 
 const AdminDashboard = ({ user }) => {
+  const isSuperAdmin = user?.role === 'super_admin';
+  const isBranchAdmin = user?.role === 'branch_admin';
+  // Read-only admin roles (no write access at all)
+  const isPrincipal = user?.role === 'principal' || user?.role === 'director' || user?.role === 'registrar';
+  // Dean Academics: read-only except for batch/academic schedule CRUD
+  const isDeanAcademics = user?.role === 'dean.academics';
+  // Combined: used to hide Sync Sheets button & lock Google Sheets / Detained Students panels
+  const isLimitedAdmin = isPrincipal || isDeanAcademics;
+  // Roles that can see all branches
+  const canViewAllBranches = isSuperAdmin || isPrincipal || isDeanAcademics;
+
   const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'detailed' | 'control'
 
   const [analytics, setAnalytics] = useState(null);
@@ -52,14 +63,13 @@ const AdminDashboard = ({ user }) => {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState(null);
   const [hoveredTest, setHoveredTest] = useState(null);
-
-  const isSuperAdmin = user?.role === 'super_admin';
-  const isBranchAdmin = user?.role === 'branch_admin';
+  const [modalSelectedYear, setModalSelectedYear] = useState(null);
 
   useEffect(() => {
     if (isBranchAdmin && user.assigned_branch) {
       setSelectedBranch(user.assigned_branch);
     }
+    // canViewAllBranches roles stay on 'ALL' by default (no lock)
   }, [user]);
 
   // Handle Escape key to close modal
@@ -141,17 +151,26 @@ const AdminDashboard = ({ user }) => {
     }
   };
 
-  const openStudentModal = async (rollIdentifier) => {
+  const openStudentModal = async (rollIdentifier, year = null) => {
     if (!rollIdentifier) return;
     setSelectedStudentRoll(rollIdentifier);
+    setModalSelectedYear(year);
     setDetailLoading(true);
     setDetailError(null);
-    setStudentDetail(null);
+    if (studentDetail?.student?.roll_number !== rollIdentifier) {
+      setStudentDetail(null);
+    }
     try {
       const token = user?.email || '';
       const headers = { Authorization: `Bearer ${token}` };
-      const res = await axios.get(`${API_URL}/api/admin/student/${encodeURIComponent(rollIdentifier)}`, { headers });
+      const res = await axios.get(`${API_URL}/api/admin/student/${encodeURIComponent(rollIdentifier)}`, { 
+        params: year ? { academic_year: year } : {},
+        headers 
+      });
       setStudentDetail(res.data);
+      if (!year && res.data?.student?.academic_year) {
+        setModalSelectedYear(res.data.student.academic_year);
+      }
     } catch (err) {
       console.error('Failed to fetch student detail:', err);
       setDetailError(err.response?.data?.detail || 'Failed to load student details. Please try again.');
@@ -164,6 +183,7 @@ const AdminDashboard = ({ user }) => {
     setSelectedStudentRoll(null);
     setStudentDetail(null);
     setDetailError(null);
+    setModalSelectedYear(null);
   };
 
   const handleBackdropClick = (e) => {
@@ -198,79 +218,149 @@ const AdminDashboard = ({ user }) => {
 
     const { student, overall, post_assessments, domain_tracks, test_scores, test_mappings, user_profile } = studentDetail;
     const rawScores = test_scores || {};
-    const rawEntries = Object.entries(rawScores);
+    const mappings = test_mappings || {};
 
-    const getScoreForTest = (num, defaultKey) => {
-      if (rawScores[defaultKey] !== undefined && rawScores[defaultKey] !== null && rawScores[defaultKey] !== '') {
-        return rawScores[defaultKey];
-      }
-      const altTestKey = `Test ${num}`;
-      if (rawScores[altTestKey] !== undefined && rawScores[altTestKey] !== null && rawScores[altTestKey] !== '') {
-        return rawScores[altTestKey];
-      }
-      if (num === 9) {
-        const match = rawEntries.find(([k]) => {
-          const kLow = k.toLowerCase().replace(/\s+/g, '');
-          return kLow.includes('post') && (kLow.includes('ii-i') || kLow.includes('iii') || kLow.includes('2-1'));
-        });
-        if (match && match[1] !== null && match[1] !== '') return match[1];
-      }
-      if (num === 23) {
-        const match = rawEntries.find(([k]) => {
-          const kLow = k.toLowerCase().replace(/\s+/g, '');
-          return kLow.includes('post') && (kLow.includes('ii-ii') || kLow.includes('iiii') || kLow.includes('2-2'));
-        });
-        if (match && match[1] !== null && match[1] !== '') return match[1];
-      }
-      return null;
+    // Detect if a test key represents a post assessment score
+    const isPostAssessment = (key) => {
+      const lower = (key || '').toLowerCase();
+      return lower.includes('post') || lower.includes('track name');
     };
 
-    const testList = Array.from({ length: 30 }, (_, i) => {
-      const num = i + 1;
-      let key = `Test ${num}`;
-      if (num === 9) key = "Post Assess. I";
-      if (num === 23) key = "Post Assess. II";
-      const scoreVal = getScoreForTest(num, key);
-      const isUnattempted = scoreVal === null || scoreVal === undefined || scoreVal === '';
+    // Natural sort: extract leading number for "Test N" style keys
+    const extractTestNum = (key) => {
+      const m = key.match(/(?:test\s*)(\d+)/i);
+      return m ? parseInt(m[1], 10) : null;
+    };
 
-      const rawDisplayName = (test_mappings && (test_mappings[key] || test_mappings[`Test ${num}`])) || key;
-      const displayName = shortenTestName(rawDisplayName);
+    // Build union of all test keys from test_scores and test_mappings
+    const allTestKeys = new Set([
+      ...Object.keys(rawScores),
+      ...Object.keys(mappings)
+    ]);
 
-      return {
-        name: displayName,
-        fullName: rawDisplayName,
-        num,
-        score: isUnattempted ? null : parseFloat(scoreVal),
-        isUnattempted
-      };
-    });
+    const mappingKeys = Object.keys(mappings || {});
 
+    const testList = [...allTestKeys]
+      .sort((a, b) => {
+        const idxA = mappingKeys.indexOf(a);
+        const idxB = mappingKeys.indexOf(b);
+        if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+        if (idxA !== -1) return -1;
+        if (idxB !== -1) return 1;
+
+        const numA = extractTestNum(a);
+        const numB = extractTestNum(b);
+        if (numA !== null && numB !== null) return numA - numB;
+        if (numA !== null) return -1;
+        if (numB !== null) return 1;
+        return a.localeCompare(b);
+      })
+      .map((key, idx) => {
+        const scoreVal = rawScores[key];
+        const isUnattempted = scoreVal === null || scoreVal === undefined || scoreVal === '';
+        const rawDisplayName = mappings[key] || key;
+        const displayName = shortenTestName(rawDisplayName);
+        const isPost = isPostAssessment(key) || isPostAssessment(rawDisplayName);
+
+        return {
+          key,
+          name: displayName,
+          fullName: rawDisplayName,
+          num: idx + 1,
+          score: isUnattempted ? null : parseFloat(scoreVal),
+          isUnattempted,
+          isPost
+        };
+      });
+
+    // Analytics Calculations
+    const totalTests = testList.length;
     const attemptedTests = testList.filter(t => !t.isUnattempted);
     const attemptedCount = attemptedTests.length;
-    const unattemptedCount = 30 - attemptedCount;
-    const attemptedPct = ((attemptedCount / 30) * 100).toFixed(2);
+    const unattemptedCount = totalTests - attemptedCount;
+    const attemptedPct = totalTests > 0 ? ((attemptedCount / totalTests) * 100).toFixed(2) : '0.00';
 
     const excellentCount = attemptedTests.filter(t => t.score >= 80).length;
     const goodCount = attemptedTests.filter(t => t.score >= 50 && t.score < 80).length;
     const needsImpCount = attemptedTests.filter(t => t.score < 50).length;
 
+    const denominator = totalTests > 1 ? totalTests - 1 : 1;
+
+    const postAssIndices = testList.reduce((acc, t, i) => {
+      if (t.isPost) acc.push(i);
+      return acc;
+    }, []);
+
+    const getMilestoneLabel = (postIndex) => {
+      const pos = postAssIndices.indexOf(postIndex);
+      if (pos === -1) return "Milestone";
+      
+      const romanYear = {1: "I", 2: "II", 3: "III", 4: "IV"}[student.academic_year] || student.academic_year;
+      const sortedSemKeys = Object.keys(domain_tracks || {})
+        .filter(key => key.startsWith(`${romanYear}-`))
+        .sort((a, b) => {
+          const semOrder = ["I-II", "II-I", "II-II", "III-I", "III-II", "IV-I", "IV-II"];
+          const indexA = semOrder.indexOf(a);
+          const indexB = semOrder.indexOf(b);
+          if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+          return a.localeCompare(b);
+        });
+      
+      if (pos < sortedSemKeys.length) {
+        const semKey = sortedSemKeys[pos];
+        const data = domain_tracks[semKey];
+        return data?.domain ? shortenTestName(data.domain) : `Track ${pos + 1}`;
+      }
+      
+      const postKeys = Object.keys(post_assessments || {});
+      if (pos < postKeys.length) {
+        return shortenTestName(postKeys[pos]);
+      }
+      
+      return `Track ${pos + 1}`;
+    };
+
+    const getXAxisLabels = () => {
+      if (totalTests === 0) return [];
+      if (totalTests <= 6) {
+        return testList.map(t => t.name);
+      }
+      const indices = [];
+      const step = (totalTests - 1) / 5;
+      for (let i = 0; i < 6; i++) {
+        indices.push(Math.round(i * step));
+      }
+      const uniqueIndices = [...new Set(indices)].sort((a, b) => a - b);
+      return uniqueIndices.map(idx => ({
+        label: testList[idx].name,
+        left: `${(idx / denominator) * 100}%`
+      }));
+    };
+    const xAxisLabels = getXAxisLabels();
+
     const topPeakTest = attemptedTests.reduce((max, t) => (t.score > (max?.score || 0) ? t : max), null);
 
     const strengths = [];
     const weaknesses = [];
-    const topDomains = Object.entries(domain_tracks || {}).filter(([_, d]) => d.performance >= 70);
-    if (topDomains.length > 0) {
-      strengths.push(`High performance in ${topDomains[0][1].domain}`);
-    } else {
-      strengths.push('Good foundational performance across core modules');
-    }
-    if (topPeakTest) strengths.push(`Peak score of ${topPeakTest.score}% in ${topPeakTest.name}`);
-    if (overall.cie_score >= 3.5) strengths.push(`Strong internal assessment score (${overall.cie_score}/5)`);
 
-    const weakDomains = Object.entries(domain_tracks || {}).filter(([_, d]) => d.performance < 60);
-    if (weakDomains.length > 0) weaknesses.push(`${weakDomains[0][1].domain} domain needs practice`);
-    if (needsImpCount > 0) weaknesses.push(`Inconsistent performance in ${needsImpCount} attempted tests`);
-    if (unattemptedCount > 0) weaknesses.push(`Complete remaining ${unattemptedCount} unattempted tests`);
+    if (attemptedCount === 0) {
+      strengths.push("No test performance data available for this academic year yet.");
+      weaknesses.push("No test performance data available for this academic year yet.");
+    } else {
+      const topDomains = Object.entries(domain_tracks || {}).filter(([_, d]) => d.performance >= 70);
+      if (topDomains.length > 0) {
+        strengths.push(`High performance in ${topDomains[0][1].domain}`);
+      } else {
+        strengths.push('Good foundational performance across core modules');
+      }
+      if (topPeakTest) strengths.push(`Peak score of ${topPeakTest.score}% in ${topPeakTest.name}`);
+      if (overall.cie_score >= 3.5) strengths.push(`Strong internal assessment score (${overall.cie_score}/5)`);
+
+      const weakDomains = Object.entries(domain_tracks || {}).filter(([_, d]) => d.performance < 60);
+      if (weakDomains.length > 0) weaknesses.push(`${weakDomains[0][1].domain} domain needs practice`);
+      if (needsImpCount > 0) weaknesses.push(`Inconsistent performance in ${needsImpCount} attempted tests`);
+      if (unattemptedCount > 0) weaknesses.push(`Complete remaining ${unattemptedCount} unattempted tests`);
+    }
 
     return (
       <div className="space-y-6 text-left">
@@ -301,24 +391,24 @@ const AdminDashboard = ({ user }) => {
             <div className="bg-slate-50 p-4 rounded-3xl border border-slate-200 text-center flex flex-col justify-between items-center">
               <span className="text-[10px] font-bold uppercase text-slate-400">CDC Band</span>
               <div className={`w-11 h-11 rounded-xl flex items-center justify-center text-xl font-black shadow-sm my-1 ${getBandBadgeColor(overall.cdc_band)}`}>
-                {overall.cdc_band || 'B'}
+                {overall.cdc_band || 'N/A'}
               </div>
               <span className="text-[10px] text-slate-400 font-medium">Performance Band</span>
             </div>
             <div className="bg-slate-50 p-4 rounded-3xl border border-slate-200 text-center flex flex-col justify-between items-center">
               <span className="text-[10px] font-bold uppercase text-slate-400">Grade Score</span>
-              <div className="my-1 text-2xl font-black text-slate-900">{overall.cdc_grade_score}%</div>
+              <div className="my-1 text-2xl font-black text-slate-900">{overall.cdc_grade_score != null ? `${overall.cdc_grade_score}%` : 'N/A'}</div>
               <span className="text-[10px] text-slate-400 font-medium">Overall Score</span>
             </div>
             <div className="bg-slate-50 p-4 rounded-3xl border border-indigo-200 bg-indigo-50/10 text-center flex flex-col justify-between items-center">
               <span className="text-[10px] font-bold uppercase text-indigo-500">Batch Rank</span>
-              <div className="my-1 text-2xl font-black text-indigo-700">#{overall.batch_rank || overall.cdc_rank || 'N/A'}</div>
-              <span className="text-[10px] text-indigo-400 font-medium">Out of {overall.batch_students || 815}</span>
+              <div className="my-1 text-2xl font-black text-indigo-700">{(overall.batch_rank || overall.cdc_rank) ? `#${overall.batch_rank || overall.cdc_rank}` : 'N/A'}</div>
+              <span className="text-[10px] text-indigo-400 font-medium">{overall.batch_students ? `Out of ${overall.batch_students}` : 'No data yet'}</span>
             </div>
             <div className="bg-slate-50 p-4 rounded-3xl border border-purple-200 bg-purple-50/10 text-center flex flex-col justify-between items-center">
               <span className="text-[10px] font-bold uppercase text-purple-500">Branch Rank</span>
-              <div className="my-1 text-2xl font-black text-purple-700">#{overall.branch_rank || 'N/A'}</div>
-              <span className="text-[10px] text-purple-400 font-medium">Out of {overall.branch_students || 278}</span>
+              <div className="my-1 text-2xl font-black text-purple-700">{overall.branch_rank ? `#${overall.branch_rank}` : 'N/A'}</div>
+              <span className="text-[10px] text-purple-400 font-medium">{overall.branch_students ? `Out of ${overall.branch_students}` : 'No data yet'}</span>
             </div>
           </div>
         </div>
@@ -329,28 +419,28 @@ const AdminDashboard = ({ user }) => {
             <div className="p-2 bg-emerald-100 text-emerald-700 rounded-xl"><TrendingUp size={18} /></div>
             <div>
               <span className="block text-[10px] font-bold text-slate-400 uppercase">Avg Performance</span>
-              <span className="text-base font-black text-slate-900">{overall.avg_performance}%</span>
+              <span className="text-base font-black text-slate-900">{overall.avg_performance != null ? `${overall.avg_performance}%` : 'N/A'}</span>
             </div>
           </div>
           <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 flex items-center gap-3">
             <div className="p-2 bg-purple-100 text-purple-700 rounded-xl"><BarChart3 size={18} /></div>
             <div>
               <span className="block text-[10px] font-bold text-slate-400 uppercase">Consistency</span>
-              <span className="text-base font-black text-slate-900">{overall.consistency_score}%</span>
+              <span className="text-base font-black text-slate-900">{overall.consistency_score != null ? `${overall.consistency_score}%` : 'N/A'}</span>
             </div>
           </div>
           <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 flex items-center gap-3">
             <div className="p-2 bg-blue-100 text-blue-700 rounded-xl"><BookOpen size={18} /></div>
             <div>
               <span className="block text-[10px] font-bold text-slate-400 uppercase">CIE I (/ 5)</span>
-              <span className="text-base font-black text-slate-900">{Math.min(overall.cie_score || 4, 5)} <span className="text-xs font-normal text-slate-400">/ 5</span></span>
+              <span className="text-base font-black text-slate-900">{overall.cie_score != null ? <>{Math.min(Number(overall.cie_score), 5)} <span className="text-xs font-normal text-slate-400">/ 5</span></> : 'N/A'}</span>
             </div>
           </div>
           <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 flex items-center gap-3">
             <div className="p-2 bg-indigo-100 text-indigo-700 rounded-xl"><BookOpen size={18} /></div>
             <div>
               <span className="block text-[10px] font-bold text-slate-400 uppercase">CIE II (/ 5)</span>
-              <span className="text-base font-black text-slate-900">{overall.cie_score !== null && overall.cie_score !== undefined ? Math.ceil(Number(overall.cie_score) * 2) / 2 : 4.5} <span className="text-xs font-normal text-slate-400">/ 5</span></span>
+              <span className="text-base font-black text-slate-900">{overall.cie_score != null ? <>{Math.ceil(Number(overall.cie_score) * 2) / 2} <span className="text-xs font-normal text-slate-400">/ 5</span></> : 'N/A'}</span>
             </div>
           </div>
         </div>
@@ -383,12 +473,21 @@ const AdminDashboard = ({ user }) => {
               <div className="relative w-full h-48 pt-6 flex-1">
                 {/* Crisp Un-stretched Milestone Text Labels */}
                 <div className="absolute top-0 left-0 right-0 h-4 pointer-events-none z-10">
-                  <span className="absolute -translate-x-1/2 text-[10px] font-extrabold text-purple-600 tracking-tight whitespace-nowrap" style={{ left: `${(8 / 29) * 100}%` }} title={domain_tracks?.["II-I"]?.domain}>
-                    {domain_tracks?.["II-I"]?.domain ? shortenTestName(domain_tracks["II-I"].domain) : "Track I"}
-                  </span>
-                  <span className="absolute -translate-x-1/2 text-[10px] font-extrabold text-purple-600 tracking-tight whitespace-nowrap" style={{ left: `${(22 / 29) * 100}%` }} title={domain_tracks?.["II-II"]?.domain}>
-                    {domain_tracks?.["II-II"]?.domain ? shortenTestName(domain_tracks["II-II"].domain) : "Track II"}
-                  </span>
+                  {postAssIndices.map(idx => {
+                    const t = testList[idx];
+                    const leftPct = (idx / denominator) * 100;
+                    const label = getMilestoneLabel(idx);
+                    return (
+                      <span 
+                        key={idx}
+                        className="absolute -translate-x-1/2 text-[10px] font-extrabold text-purple-600 tracking-tight whitespace-nowrap" 
+                        style={{ left: `${leftPct}%` }} 
+                        title={t.fullName}
+                      >
+                        {label}
+                      </span>
+                    );
+                  })}
                 </div>
 
                 <svg className="w-full h-full overflow-visible" viewBox="0 0 800 150" preserveAspectRatio="none">
@@ -405,25 +504,40 @@ const AdminDashboard = ({ user }) => {
                   <line x1="0" y1="120" x2="800" y2="120" stroke="#f1f5f9" strokeDasharray="4 4" vectorEffect="non-scaling-stroke" />
 
                   {/* Dynamic Milestone vertical dashed lines perfectly aligned to dots */}
-                  <line x1={(8 / 29) * 800} y1="0" x2={(8 / 29) * 800} y2="140" stroke="#a855f7" strokeDasharray="3 3" opacity="0.5" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
-                  <line x1={(22 / 29) * 800} y1="0" x2={(22 / 29) * 800} y2="140" stroke="#a855f7" strokeDasharray="3 3" opacity="0.5" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+                  {postAssIndices.map(idx => {
+                    const xVal = (idx / denominator) * 800;
+                    return (
+                      <line 
+                        key={idx}
+                        x1={xVal} 
+                        y1="0" 
+                        x2={xVal} 
+                        y2="140" 
+                        stroke="#a855f7" 
+                        strokeDasharray="3 3" 
+                        opacity="0.5" 
+                        strokeWidth="1.5" 
+                        vectorEffect="non-scaling-stroke" 
+                      />
+                    );
+                  })}
 
                   {/* Polyline path connecting test scores */}
                   {(() => {
                     const pts = testList.map((t, i) => {
-                      const x = (i / 29) * 800;
+                      const x = (i / denominator) * 800;
                       const score = t.isUnattempted ? 0 : t.score;
                       const y = 140 - (score / 100) * 120;
                       return { x, y, score, isUnattempted: t.isUnattempted };
                     });
                     
                     const pointsStr = pts.map(p => `${p.x},${p.y}`).join(' ');
-                    const areaStr = `0,140 ${pointsStr} 800,140`;
+                    const areaStr = pts.length > 0 ? `0,140 ${pointsStr} 800,140` : "0,140 800,140";
 
                     return (
                       <>
-                        <polygon fill="url(#emeraldTrendGradAdmin)" points={areaStr} />
-                        <polyline fill="none" stroke="#10b981" strokeWidth="2.5" points={pointsStr} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+                        {pts.length > 0 && <polygon fill="url(#emeraldTrendGradAdmin)" points={areaStr} />}
+                        {pts.length > 0 && <polyline fill="none" stroke="#10b981" strokeWidth="2.5" points={pointsStr} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />}
                         {testList.map((t, i) => {
                           const p = pts[i];
                           const isHovered = hoveredTest?.num === t.num;
@@ -456,10 +570,10 @@ const AdminDashboard = ({ user }) => {
 
                 {/* Dynamic Hover Tooltip */}
                 {(() => {
-                  const active = hoveredTest || (topPeakTest ? { ...topPeakTest, x: (testList.findIndex(t=>t.num===topPeakTest.num)/29)*100 } : null);
+                  const active = hoveredTest || (topPeakTest ? { ...topPeakTest, x: (testList.findIndex(t=>t.num===topPeakTest.num)/denominator)*100 } : null);
                   if (!active) return null;
                   
-                  const leftPct = hoveredTest ? (hoveredTest.x / 500) * 100 : active.x;
+                  const leftPct = hoveredTest ? (hoveredTest.x / 800) * 100 : active.x;
                   const isUnatt = active.isUnattempted;
 
                   return (
@@ -479,14 +593,22 @@ const AdminDashboard = ({ user }) => {
 
 
             {/* Axis Labels */}
-            <div className="flex justify-between text-[10px] text-slate-400 font-semibold pt-2 border-t border-slate-100">
-              <span>Test 1</span>
-              <span>Test 5</span>
-              <span>Test 10</span>
-              <span>Test 15</span>
-              <span>Test 20</span>
-              <span>Test 25</span>
-              <span>Test 30</span>
+            <div className="relative h-6 text-[10px] text-slate-400 font-semibold pt-2 border-t border-slate-100 w-full select-none">
+              {xAxisLabels.map((item, idx) => {
+                const labelText = typeof item === 'string' ? item : item.label;
+                const leftStyle = typeof item === 'string' 
+                  ? `${(idx / (xAxisLabels.length - 1 || 1)) * 100}%` 
+                  : item.left;
+                return (
+                  <span 
+                    key={idx} 
+                    className="absolute -translate-x-1/2 whitespace-nowrap" 
+                    style={{ left: leftStyle }}
+                  >
+                    {labelText}
+                  </span>
+                );
+              })}
             </div>
           </div>
 
@@ -520,7 +642,7 @@ const AdminDashboard = ({ user }) => {
                 />
               </svg>
               <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-                <span className="text-2xl font-black text-slate-900">30</span>
+                <span className="text-2xl font-black text-slate-900">{totalTests}</span>
                 <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Total Tests</span>
               </div>
             </div>
@@ -559,7 +681,7 @@ const AdminDashboard = ({ user }) => {
                   <span className="font-bold text-slate-900">{excellentCount}</span>
                 </div>
                 <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                  <div className="bg-emerald-500 h-full rounded-full transition-all duration-500" style={{ width: `${(excellentCount/30)*100}%` }}></div>
+                  <div className="bg-emerald-500 h-full rounded-full transition-all duration-500" style={{ width: totalTests > 0 ? `${(excellentCount/totalTests)*100}%` : '0%' }}></div>
                 </div>
               </div>
 
@@ -570,7 +692,7 @@ const AdminDashboard = ({ user }) => {
                   <span className="font-bold text-slate-900">{goodCount}</span>
                 </div>
                 <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                  <div className="bg-blue-500 h-full rounded-full transition-all duration-500" style={{ width: `${(goodCount/30)*100}%` }}></div>
+                  <div className="bg-blue-500 h-full rounded-full transition-all duration-500" style={{ width: totalTests > 0 ? `${(goodCount/totalTests)*100}%` : '0%' }}></div>
                 </div>
               </div>
 
@@ -581,7 +703,7 @@ const AdminDashboard = ({ user }) => {
                   <span className="font-bold text-slate-900">{needsImpCount}</span>
                 </div>
                 <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                  <div className="bg-amber-500 h-full rounded-full transition-all duration-500" style={{ width: `${(needsImpCount/30)*100}%` }}></div>
+                  <div className="bg-amber-500 h-full rounded-full transition-all duration-500" style={{ width: totalTests > 0 ? `${(needsImpCount/totalTests)*100}%` : '0%' }}></div>
                 </div>
               </div>
 
@@ -592,13 +714,13 @@ const AdminDashboard = ({ user }) => {
                   <span className="font-bold text-slate-900">{unattemptedCount}</span>
                 </div>
                 <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                  <div className="bg-slate-300 h-full rounded-full transition-all duration-500" style={{ width: `${(unattemptedCount/30)*100}%` }}></div>
+                  <div className="bg-slate-300 h-full rounded-full transition-all duration-500" style={{ width: totalTests > 0 ? `${(unattemptedCount/totalTests)*100}%` : '0%' }}></div>
                 </div>
               </div>
             </div>
 
             <div className="text-[10px] text-slate-400 font-medium pt-2 border-t border-slate-100 text-center">
-              Score breakdown across 30 standard tests
+              Score breakdown across {totalTests} standard tests
             </div>
           </div>
 
@@ -654,15 +776,30 @@ const AdminDashboard = ({ user }) => {
           </div>
         </div>
 
-        {/* 30 Tests Full Grid */}
+        {/* Dynamic Test Grid */}
         <div className="bg-slate-50 rounded-3xl border border-slate-200 p-5 space-y-3">
           <h3 className="text-xs font-extrabold text-slate-900 uppercase flex items-center gap-1.5">
-            <BookOpen size={14} className="text-emerald-600" /> All 30 Test Scores
+            <BookOpen size={14} className="text-emerald-600" /> All {totalTests > 0 ? `${totalTests} ` : ''}Test Scores
           </h3>
           <div className="grid grid-cols-2 sm:grid-cols-5 md:grid-cols-6 gap-2">
             {testList.map((t) => (
-              <div key={t.name} className="p-2 bg-white rounded-xl border border-slate-200 text-center text-xs" title={t.fullName}>
-                <div className="text-[10px] font-bold text-slate-500 truncate">{t.name}</div>
+              <div 
+                key={t.name} 
+                className={`p-2 rounded-xl border text-center text-xs flex flex-col justify-between ${
+                  t.isPost 
+                    ? 'ring-2 ring-emerald-500/50 bg-emerald-50/30 border-emerald-300' 
+                    : 'bg-white border-slate-200 hover:border-slate-300'
+                }`} 
+                title={t.fullName}
+              >
+                <div className="flex items-center justify-between gap-1 mb-1">
+                  <span className="text-[10px] font-bold text-slate-500 truncate">{t.name}</span>
+                  {t.isPost && (
+                    <span className="text-[8px] bg-emerald-600 text-white px-1 py-0.2 rounded font-extrabold scale-90 shrink-0">
+                      POST
+                    </span>
+                  )}
+                </div>
                 <div className={`font-black mt-0.5 ${t.isUnattempted ? 'text-slate-300' : t.score >= 80 ? 'text-emerald-600' : 'text-blue-600'}`}>
                   {t.isUnattempted ? '-' : `${t.score}%`}
                 </div>
@@ -683,224 +820,244 @@ const AdminDashboard = ({ user }) => {
   };
 
   return (
-    <div className="space-y-8 pb-12">
+    <div className="flex flex-col lg:flex-row items-stretch min-h-[calc(100vh-4rem)] w-full">
       
-      {/* Top Banner & Role Profile */}
-      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 rounded-3xl p-6 sm:p-8 text-white shadow-xl relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl pointer-events-none"></div>
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center md:justify-between gap-6">
-          <div className="space-y-2">
-            <div className="inline-flex items-center gap-2 px-3 py-1 bg-blue-500/20 text-blue-300 border border-blue-400/30 rounded-full text-xs font-semibold uppercase tracking-wider">
-              <ShieldCheck size={14} />
-              {isSuperAdmin ? 'Full Access Admin' : `Branch Administrator (${user?.assigned_branch})`}
+      {/* Sidebar Navigation */}
+      <aside className="w-full lg:w-64 bg-white border-b lg:border-b-0 lg:border-r border-slate-200 p-6 shrink-0 lg:sticky lg:top-16 lg:h-[calc(100vh-4rem)] flex flex-col justify-between">
+        <div className="space-y-6">
+          <div className="px-2">
+            <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+              CDC Admin Panel
+            </h2>
+          </div>
+          <nav className="flex flex-col gap-1.5">
+            <button
+              onClick={() => setActiveTab('overview')}
+              className={`flex items-center gap-3 px-4 py-3 rounded-2xl text-xs font-bold transition-all cursor-pointer w-full text-left ${
+                activeTab === 'overview'
+                  ? 'bg-blue-600 text-white shadow-md shadow-blue-500/10'
+                  : 'hover:bg-slate-50 text-slate-600'
+              }`}
+            >
+              <LayoutDashboard size={16} />
+              <span>Overview</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('detailed')}
+              className={`flex items-center gap-3 px-4 py-3 rounded-2xl text-xs font-bold transition-all cursor-pointer w-full text-left ${
+                activeTab === 'detailed'
+                  ? 'bg-blue-600 text-white shadow-md shadow-blue-500/10'
+                  : 'hover:bg-slate-50 text-slate-600'
+              }`}
+            >
+              <LineChart size={16} />
+              <span>Detailed Dashboard</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('projects')}
+              className={`flex items-center gap-3 px-4 py-3 rounded-2xl text-xs font-bold transition-all cursor-pointer w-full text-left ${
+                activeTab === 'projects'
+                  ? 'bg-blue-600 text-white shadow-md shadow-blue-500/10'
+                  : 'hover:bg-slate-50 text-slate-600'
+              }`}
+            >
+              <BookOpen size={16} />
+              <span>Projects & Multi-Stack</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('control')}
+              className={`flex items-center gap-3 px-4 py-3 rounded-2xl text-xs font-bold transition-all cursor-pointer w-full text-left ${
+                activeTab === 'control'
+                  ? 'bg-blue-600 text-white shadow-md shadow-blue-500/10'
+                  : 'hover:bg-slate-50 text-slate-600'
+              }`}
+            >
+              <Layers size={16} />
+              <span>Track & Batch Control</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('sheets')}
+              className={`flex items-center gap-3 px-4 py-3 rounded-2xl text-xs font-bold transition-all cursor-pointer w-full text-left ${
+                activeTab === 'sheets'
+                  ? 'bg-blue-600 text-white shadow-md shadow-blue-500/10'
+                  : 'hover:bg-slate-50 text-slate-600'
+              }`}
+            >
+              <FileSpreadsheet size={16} />
+              <span>Google Sheets Sync</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('detained')}
+              className={`flex items-center gap-3 px-4 py-3 rounded-2xl text-xs font-bold transition-all cursor-pointer w-full text-left ${
+                activeTab === 'detained'
+                  ? 'bg-blue-600 text-white shadow-md shadow-blue-500/10'
+                  : 'hover:bg-slate-50 text-slate-600'
+              }`}
+            >
+              <UserMinus size={16} />
+              <span>Detained Students</span>
+            </button>
+          </nav>
+        </div>
+      </aside>
+
+      {/* Main Content Area */}
+      <div className="flex-1 min-w-0 space-y-6 w-full pt-6 pb-12 px-4 sm:px-6 lg:px-8">
+        {/* Subtle Top Header Banner */}
+        <div className="bg-white border border-slate-200/80 rounded-3xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm w-full">
+          <div className="space-y-1">
+            <div className="flex items-center flex-wrap gap-2">
+              <h1 className="text-xl sm:text-2xl font-black text-slate-800 tracking-tight">
+                CDC Overview Dashboard
+              </h1>
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-blue-50 text-blue-700 border border-blue-100 rounded-full text-[10px] font-bold uppercase tracking-wider">
+                <ShieldCheck size={11} />
+                {isSuperAdmin ? 'Admin'
+                  : user?.role === 'director' ? 'Director'
+                  : user?.role === 'registrar' ? 'Registrar'
+                  : user?.role === 'dean.academics' ? 'Dean (Academics)'
+                  : isPrincipal ? 'Principal'
+                  : `Branch Admin (${user?.assigned_branch})`}
+              </span>
             </div>
-            <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-white">
-              CDC Overview Dashboard
-            </h1>
-            <p className="text-slate-300 text-sm max-w-2xl">
+            <p className="text-slate-500 text-xs max-w-2xl leading-relaxed">
               Real-time academic & Career Development Center performance monitoring, branch aggregations, and student level insights.
             </p>
           </div>
 
-          {/* User badge */}
-          <div className="flex items-center gap-4 bg-white/10 backdrop-blur-md p-4 rounded-2xl border border-white/10 shrink-0">
+          {/* User profile badge */}
+          <div className="flex items-center gap-3 bg-slate-50 hover:bg-slate-100/70 p-2.5 rounded-2xl border border-slate-200/50 shrink-0 transition-colors">
             {user?.picture ? (
-              <img src={user.picture} alt="Profile" className="w-12 h-12 rounded-full ring-2 ring-blue-400 object-cover" />
+              <img src={user.picture} alt="Profile" className="w-9 h-9 rounded-full object-cover border border-slate-200" />
             ) : (
-              <div className="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center font-bold text-lg text-white">
+              <div className="w-9 h-9 bg-blue-600 rounded-full flex items-center justify-center font-bold text-sm">
                 {user?.name ? user.name[0].toUpperCase() : 'A'}
               </div>
             )}
-            <div>
-              <div className="font-bold text-white text-base">{user?.name || 'Administrator'}</div>
-              <div className="text-xs text-blue-200">{user?.email}</div>
+            <div className="min-w-0">
+              <div className="font-bold text-slate-800 text-xs truncate max-w-[150px]">{user?.name || 'Administrator'}</div>
+              <div className="text-[10px] text-slate-500 truncate max-w-[150px]">{user?.email}</div>
             </div>
           </div>
         </div>
-      </div>
 
-      {/* Admin Navigation Tabs */}
-      <div className="flex items-center gap-3 border-b border-slate-200 pb-3">
-        <button
-          onClick={() => setActiveTab('overview')}
-          className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl text-xs font-bold transition-all cursor-pointer ${
-            activeTab === 'overview'
-              ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
-              : 'bg-white hover:bg-slate-100 text-slate-600 border border-slate-200'
-          }`}
-        >
-          <LayoutDashboard size={16} />
-          <span>Overview</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('detailed')}
-          className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl text-xs font-bold transition-all cursor-pointer ${
-            activeTab === 'detailed'
-              ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
-              : 'bg-white hover:bg-slate-100 text-slate-600 border border-slate-200'
-          }`}
-        >
-          <LineChart size={16} />
-          <span>Detailed Dashboard</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('projects')}
-          className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl text-xs font-bold transition-all cursor-pointer ${
-            activeTab === 'projects'
-              ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
-              : 'bg-white hover:bg-slate-100 text-slate-600 border border-slate-200'
-          }`}
-        >
-          <BookOpen size={16} />
-          <span>Projects & Multi-Stack Requests</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('control')}
-          className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl text-xs font-bold transition-all cursor-pointer ${
-            activeTab === 'control'
-              ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
-              : 'bg-white hover:bg-slate-100 text-slate-600 border border-slate-200'
-          }`}
-        >
-          <Layers size={16} />
-          <span>Track & Batch Control</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('sheets')}
-          className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl text-xs font-bold transition-all cursor-pointer ${
-            activeTab === 'sheets'
-              ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
-              : 'bg-white hover:bg-slate-100 text-slate-600 border border-slate-200'
-          }`}
-        >
-          <FileSpreadsheet size={16} />
-          <span>Google Sheets Sync</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('detained')}
-          className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl text-xs font-bold transition-all cursor-pointer ${
-            activeTab === 'detained'
-              ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
-              : 'bg-white hover:bg-slate-100 text-slate-600 border border-slate-200'
-          }`}
-        >
-          <UserMinus size={16} />
-          <span>Detained Students</span>
-        </button>
-      </div>
-
-      {activeTab === 'projects' ? (
-        <ProjectManagementAdmin user={user} />
-      ) : activeTab === 'control' ? (
-        <TrackBatchControlPanel user={user} />
-      ) : activeTab === 'detailed' ? (
-        <DetailedDashboard 
-          user={user} 
-          selectedBranch={selectedBranch} 
-          selectedBatch={selectedBatch} 
-          selectedYear={selectedYear} 
-          onSelectStudent={openStudentModal} 
-        />
-      ) : activeTab === 'sheets' ? (
-        <GoogleSheetsSetup user={user} />
-      ) : activeTab === 'detained' ? (
-        <DetainedStudentsSetup user={user} />
-      ) : (
-        <div className="space-y-8">
-
-      {/* Controls Bar & Sync */}
-      <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex flex-wrap items-center gap-6">
-          
-          {/* Branch Dropdown */}
-          <div className="flex flex-col gap-1.5 min-w-[140px]">
-            <label className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-              <Building2 size={14} className="text-slate-400" />
-              Branch
-            </label>
-            {isSuperAdmin ? (
-              <select
-                value={selectedBranch}
-                onChange={(e) => setSelectedBranch(e.target.value)}
-                className="bg-slate-50 border border-slate-200 text-slate-700 text-sm font-semibold rounded-xl px-3 py-2 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all min-w-[150px]"
-              >
-                {['ALL', 'CSE', 'CSM', 'CSD', 'ECE', 'EEE', 'MECH'].map((b) => (
-                  <option key={b} value={b}>
-                    {b === 'ALL' ? 'All Branches' : b}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <div className="px-3.5 py-2 bg-blue-50 text-blue-700 font-extrabold text-xs rounded-xl border border-blue-200">
-                {user?.assigned_branch} Branch Only
+        {/* Filters Bar - Visible in Overview and Detailed Dashboard */}
+        {(activeTab === 'overview' || activeTab === 'detailed') && (
+          <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex flex-wrap items-center gap-6">
+              
+              {/* Branch Dropdown */}
+              <div className="flex flex-col gap-1.5 min-w-[140px]">
+                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                  <Building2 size={13} className="text-slate-400" />
+                  Branch
+                </label>
+                {canViewAllBranches ? (
+                  <select
+                    value={selectedBranch}
+                    onChange={(e) => setSelectedBranch(e.target.value)}
+                    className="bg-slate-50 border border-slate-200 text-slate-700 text-sm font-semibold rounded-xl px-3 py-2 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all min-w-[150px]"
+                  >
+                    {['ALL', 'CSE', 'CSM', 'CSD', 'ECE', 'EEE', 'MECH'].map((b) => (
+                      <option key={b} value={b}>
+                        {b === 'ALL' ? 'All Branches' : b}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <div className="px-3.5 py-2 bg-blue-50 text-blue-700 font-extrabold text-xs rounded-xl border border-blue-200">
+                    {user?.assigned_branch} Branch Only
+                  </div>
+                )}
               </div>
-            )}
-          </div>
 
-          {/* Batch Dropdown */}
-          <div className="flex flex-col gap-1.5 min-w-[140px]">
-            <label className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-              <Layers size={14} className="text-slate-400" />
-              Batch
-            </label>
-            <select
-              value={selectedBatch}
-              onChange={(e) => setSelectedBatch(e.target.value)}
-              className="bg-slate-50 border border-slate-200 text-slate-700 text-sm font-semibold rounded-xl px-3 py-2 cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all min-w-[150px]"
-            >
-              <option value="ALL">All Batches</option>
-              {availableBatches.map((b) => (
-                <option key={b} value={b}>
-                  Batch {b}
-                </option>
-              ))}
-            </select>
-          </div>
+              {/* Batch Dropdown */}
+              <div className="flex flex-col gap-1.5 min-w-[140px]">
+                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                  <Layers size={13} className="text-slate-400" />
+                  Batch
+                </label>
+                <select
+                  value={selectedBatch}
+                  onChange={(e) => setSelectedBatch(e.target.value)}
+                  className="bg-slate-50 border border-slate-200 text-slate-700 text-sm font-semibold rounded-xl px-3 py-2 cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all min-w-[150px]"
+                >
+                  <option value="ALL">All Batches</option>
+                  {availableBatches.map((b) => (
+                    <option key={b} value={b}>
+                      Batch {b}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-          {/* Year Dropdown */}
-          <div className="flex flex-col gap-1.5 min-w-[140px]">
-            <label className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-              <Calendar size={14} className="text-slate-400" />
-              Academic Year
-            </label>
-            <select
-              value={selectedYear}
-              onChange={(e) => setSelectedYear(e.target.value)}
-              className="bg-slate-50 border border-slate-200 text-slate-700 text-sm font-semibold rounded-xl px-3 py-2 cursor-pointer focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 transition-all min-w-[150px]"
-            >
-              <option value="ALL">All Years</option>
-              <option value="1">1st Year</option>
-              <option value="2">2nd Year</option>
-              <option value="3">3rd Year</option>
-              <option value="4">4th Year</option>
-            </select>
-          </div>
-        </div>
+              {/* Year Dropdown */}
+              <div className="flex flex-col gap-1.5 min-w-[140px]">
+                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                  <Calendar size={13} className="text-slate-400" />
+                  Academic Year
+                </label>
+                <select
+                  value={selectedYear}
+                  onChange={(e) => setSelectedYear(e.target.value)}
+                  className="bg-slate-50 border border-slate-200 text-slate-700 text-sm font-semibold rounded-xl px-3 py-2 cursor-pointer focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 transition-all min-w-[150px]"
+                >
+                  <option value="ALL">All Years</option>
+                  <option value="1">1st Year</option>
+                  <option value="2">2nd Year</option>
+                  <option value="3">3rd Year</option>
+                  <option value="4">4th Year</option>
+                </select>
+              </div>
+            </div>
 
-        <div className="flex items-center gap-3">
-          {syncMessage && (
-            <span className={`text-xs font-semibold px-3 py-1.5 rounded-lg border flex items-center gap-1.5 ${
-              syncMessage.type === 'success' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'
-            }`}>
-              {syncMessage.type === 'success' ? <CheckCircle2 size={14} /> : <AlertCircle size={14} />}
-              {syncMessage.text}
-            </span>
-          )}
-          <button
-            onClick={handleSyncSheets}
-            disabled={syncing}
-            className="flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 disabled:bg-slate-400 text-white text-xs font-bold rounded-xl transition-colors shadow-sm cursor-pointer shrink-0"
-          >
-            <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} />
-            <span>{syncing ? 'Syncing Sheets...' : 'Sync Live Sheets'}</span>
-          </button>
-        </div>
-      </div>
+            <div className="flex items-center gap-3">
+              {syncMessage && (
+                <span className={`text-xs font-semibold px-3 py-1.5 rounded-lg border flex items-center gap-1.5 ${
+                  syncMessage.type === 'success' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'
+                }`}>
+                  {syncMessage.type === 'success' ? <CheckCircle2 size={14} /> : <AlertCircle size={14} />}
+                  {syncMessage.text}
+                </span>
+              )}
+              {!isLimitedAdmin && (
+                <button
+                  onClick={handleSyncSheets}
+                  disabled={syncing}
+                  className="flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 disabled:bg-slate-400 text-white text-xs font-bold rounded-xl transition-colors shadow-sm cursor-pointer shrink-0"
+                >
+                  <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} />
+                  <span>{syncing ? 'Syncing Sheets...' : 'Sync Live Sheets'}</span>
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Tab Contents */}
+        {activeTab === 'projects' ? (
+          <ProjectManagementAdmin user={user} />
+        ) : activeTab === 'control' ? (
+          <TrackBatchControlPanel user={user} isReadOnly={isPrincipal} />
+        ) : activeTab === 'detailed' ? (
+          <DetailedDashboard 
+            user={user} 
+            selectedBranch={selectedBranch} 
+            selectedBatch={selectedBatch} 
+            selectedYear={selectedYear} 
+            onSelectStudent={openStudentModal} 
+          />
+        ) : activeTab === 'sheets' ? (
+          <GoogleSheetsSetup user={user} isReadOnly={isLimitedAdmin} />
+        ) : activeTab === 'detained' ? (
+          <DetainedStudentsSetup user={user} isReadOnly={isLimitedAdmin} />
+        ) : (
+          <div className="space-y-8">
 
       {/* Overview Analytics Metrics Grid */}
       {loading && !analytics ? (
@@ -1116,13 +1273,13 @@ const AdminDashboard = ({ user }) => {
                       </span>
                     </td>
                     <td className="py-3.5 px-4 text-center font-bold text-slate-800">
-                      {st.avg_performance}%
+                      {st.avg_performance != null ? `${st.avg_performance}%` : 'N/A'}
                     </td>
                     <td className="py-3.5 px-4 text-center font-extrabold text-indigo-600">
-                      {st.cie_score}
+                      {st.cie_score != null ? st.cie_score : 'N/A'}
                     </td>
                     <td className="py-3.5 px-4 text-center font-medium text-slate-600">
-                      {st.consistency_score}%
+                      {st.consistency_score != null ? `${st.consistency_score}%` : 'N/A'}
                     </td>
                     <td className="py-3.5 px-4 text-right">
                       <button 
@@ -1190,13 +1347,31 @@ const AdminDashboard = ({ user }) => {
           >
             {/* Fixed Modal Header Bar */}
             <div className="px-6 py-4 sm:px-8 bg-slate-900 text-white flex items-center justify-between shrink-0 border-b border-slate-800">
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-3">
                 <span className="px-3 py-1 bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 rounded-full text-xs font-bold uppercase tracking-wider">
                   Student CDC Inspection
                 </span>
                 <span className="text-xs text-slate-300 font-mono hidden sm:inline">
                   {studentDetail?.student?.roll_number || selectedStudentRoll}
                 </span>
+
+                {/* Academic Year Selector */}
+                {studentDetail?.student?.available_years && (
+                  <div className="flex items-center gap-1.5 bg-white/10 px-2.5 py-1 border border-white/5 rounded-xl text-xs font-semibold text-white ml-2">
+                    <span className="text-slate-400">Academic Year:</span>
+                    <select
+                      value={modalSelectedYear || ''}
+                      onChange={(e) => openStudentModal(selectedStudentRoll, parseInt(e.target.value))}
+                      className="bg-transparent focus:outline-none font-bold text-white cursor-pointer"
+                    >
+                      {studentDetail.student.available_years.map((yr) => (
+                        <option key={yr} value={yr} className="bg-slate-900 text-white">
+                          {yr === 1 ? '1st Year' : yr === 2 ? '2nd Year' : yr === 3 ? '3rd Year' : yr === 4 ? '4th Year' : `${yr}th Year`}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
               <button
                 onClick={closeStudentModal}
@@ -1248,6 +1423,7 @@ const AdminDashboard = ({ user }) => {
 
 
 
+      </div>
     </div>
   );
 };

@@ -279,16 +279,25 @@ Generated on: ${new Date().toLocaleString()}
 
                 {/* Vertical Dotted Lines for Post Assessment I & II */}
                 {(() => {
-                  const xP1 = (8 / 29) * 500;
-                  const xP2 = (22 / 29) * 500;
+                  const rawList = data.performance_trend || [];
+                  const p1Idx = rawList.findIndex(t => t.label === "Post Assessment I");
+                  const p2Idx = rawList.findIndex(t => t.label === "Post Assessment II");
+                  const denom = rawList.length > 1 ? rawList.length - 1 : 1;
+                  
                   return (
                     <>
-                      <line x1={xP1} y1="20" x2={xP1} y2="150" stroke="#C084FC" strokeDasharray="4 4" strokeWidth="2" />
-                      <line x1={xP2} y1="20" x2={xP2} y2="150" stroke="#C084FC" strokeDasharray="4 4" strokeWidth="2" />
-                      
-                      {/* Non-overlapping Header Labels */}
-                      <text x={xP1} y="12" fill="#9333EA" fontSize="11" fontWeight="800" textAnchor="middle">Track Name I</text>
-                      <text x={xP2} y="12" fill="#9333EA" fontSize="11" fontWeight="800" textAnchor="middle">Track Name II</text>
+                      {p1Idx !== -1 && (
+                        <>
+                          <line x1={(p1Idx / denom) * 500} y1="20" x2={(p1Idx / denom) * 500} y2="150" stroke="#C084FC" strokeDasharray="4 4" strokeWidth="2" />
+                          <text x={(p1Idx / denom) * 500} y="12" fill="#9333EA" fontSize="11" fontWeight="800" textAnchor="middle">Track Name I</text>
+                        </>
+                      )}
+                      {p2Idx !== -1 && (
+                        <>
+                          <line x1={(p2Idx / denom) * 500} y1="20" x2={(p2Idx / denom) * 500} y2="150" stroke="#C084FC" strokeDasharray="4 4" strokeWidth="2" />
+                          <text x={(p2Idx / denom) * 500} y="12" fill="#9333EA" fontSize="11" fontWeight="800" textAnchor="middle">Track Name II</text>
+                        </>
+                      )}
                     </>
                   );
                 })()}
@@ -296,8 +305,9 @@ Generated on: ${new Date().toLocaleString()}
                 {/* Dynamic Smooth Trend Line & Gradient */}
                 {(() => {
                   const rawList = data.performance_trend || [];
+                  const denom = rawList.length > 1 ? rawList.length - 1 : 1;
                   const pts = rawList.map((t, idx) => {
-                    const x = (idx / 29) * 500;
+                    const x = (idx / denom) * 500;
                     let targetVal = t.avg_score;
                     if (trendMetric === 'Top Score') targetVal = t.top_score;
                     if (trendMetric === 'Lowest Score') targetVal = t.lowest_score;

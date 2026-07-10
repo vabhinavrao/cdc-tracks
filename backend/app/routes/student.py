@@ -351,10 +351,33 @@ def get_cdc_dashboard_data(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"No CDC Performance record found for roll number '{user.roll_number}' or email '{user.email}'."
         )
-    
+
+    # ── Cumulative merge: only domain_tracks accumulates across all years ────
+    # Sort other records oldest-first so more recent data wins
+    other_records = sorted(
+        [r for r in all_records_q if r.academic_year != cdc_record.academic_year],
+        key=lambda r: r.academic_year or 0
+    )
+
+    merged_domain_tracks = {}
+    for r in other_records:
+        if r.domain_tracks:
+            merged_domain_tracks.update(r.domain_tracks)
+    # Selected year always wins on top
+    if cdc_record.domain_tracks:
+        merged_domain_tracks.update(cdc_record.domain_tracks)
+    final_domain_tracks = merged_domain_tracks or cdc_record.domain_tracks
+    # ────────────────────────────────────────────────────────────────────────
+
     from app.services.cdc_service import calculate_ranks
     ranks = calculate_ranks(db, cdc_record)
-        
+
+    test_mappings_result = get_test_mappings(db, cdc_record.batch_year, cdc_record.academic_year)
+    # Dynamic test count: union of keys from test_scores and test_mappings
+    all_test_keys = set(cdc_record.test_scores.keys() if cdc_record.test_scores else [])
+    all_test_keys |= set(test_mappings_result.keys() if test_mappings_result else [])
+    test_count = len(all_test_keys) if all_test_keys else 0
+
     return {
         "student": {
             "name": cdc_record.name or user.name,
@@ -378,9 +401,10 @@ def get_cdc_dashboard_data(
             "branch_students": ranks["branch_students"]
         },
         "post_assessments": cdc_record.post_assessments,
-        "domain_tracks": cdc_record.domain_tracks,
+        "domain_tracks": final_domain_tracks,
         "test_scores": cdc_record.test_scores,
-        "test_mappings": get_test_mappings(db, cdc_record.batch_year, cdc_record.academic_year),
+        "test_mappings": test_mappings_result,
+        "test_count": test_count,
         "available_years": available_years
     }
 

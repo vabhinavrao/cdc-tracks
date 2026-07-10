@@ -436,10 +436,11 @@ def sync_live_google_sheets(db: Session, sheet1_id_or_url: str, sheet2_id_or_url
                 # Standardize common typos in sheet headers
                 col_clean_norm = col_clean.replace("Asssessment", "Assessment").replace("asssessment", "assessment")
                 
-                if "test" in col_clean_norm.lower() or "post assessment" in col_clean_norm.lower():
+                col_lower = col_clean_norm.lower()
+                if "test" in col_lower or "post" in col_lower or "assess" in col_lower or "track name" in col_lower:
                     cleaned_val = clean_sheet_value(val)
                     test_scores[col_clean_norm] = cleaned_val
-                    if "post" in col_clean_norm.lower():
+                    if "post" in col_lower or "track name" in col_lower:
                         post_assessments[col_clean_norm] = cleaned_val
 
             # Upsert into database

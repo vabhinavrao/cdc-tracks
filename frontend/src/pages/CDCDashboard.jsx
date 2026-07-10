@@ -91,80 +91,144 @@ const CDCDashboard = ({ user }) => {
 
   const { student, overall, post_assessments, domain_tracks, test_scores, test_mappings } = cdcData;
 
-  // Generate comprehensive list of all 30 tests
+  // ── Dynamic test list: built from actual data keys, not hardcoded 30 ──
   const rawScores = test_scores || {};
-  const rawEntries = Object.entries(rawScores);
+  const mappings = test_mappings || {};
 
-  const getScoreForTest = (num, defaultKey) => {
-    // 1. Try defaultKey (e.g. "Track Name I")
-    if (rawScores[defaultKey] !== undefined && rawScores[defaultKey] !== null && rawScores[defaultKey] !== '') {
-      return rawScores[defaultKey];
-    }
-    // 2. Try legacy post assessment keys
-    if (num === 9) {
-      if (rawScores["Post Assess. I"] !== undefined) return rawScores["Post Assess. I"];
-      if (rawScores["Post Assessment I"] !== undefined) return rawScores["Post Assessment I"];
-      if (rawScores["Post Assessment II-I"] !== undefined) return rawScores["Post Assessment II-I"];
-    }
-    if (num === 23) {
-      if (rawScores["Post Assess. II"] !== undefined) return rawScores["Post Assess. II"];
-      if (rawScores["Post Assessment II"] !== undefined) return rawScores["Post Assessment II"];
-      if (rawScores["Post Assessment II-II"] !== undefined) return rawScores["Post Assessment II-II"];
-    }
-    // 3. Try standard "Test N" key
-    const altTestKey = `Test ${num}`;
-    if (rawScores[altTestKey] !== undefined && rawScores[altTestKey] !== null && rawScores[altTestKey] !== '') {
-      return rawScores[altTestKey];
-    }
-    // 4. Try matching on substring (with collision prevention)
-    if (num === 9) {
-      const match = rawEntries.find(([k, v]) => {
-        const kLow = k.toLowerCase().replace(/\s+/g, '');
-        if (kLow.includes('ii-ii') || kLow.includes('2-2')) return false;
-        return (kLow.includes('post') || kLow.includes('track')) && (kLow.includes('ii-i') || kLow.includes('iii') || kLow.includes('2-1') || kLow.includes('i') || kLow.includes('1'));
-      });
-      if (match && match[1] !== null && match[1] !== '') return match[1];
-    }
-    if (num === 23) {
-      const match = rawEntries.find(([k, v]) => {
-        const kLow = k.toLowerCase().replace(/\s+/g, '');
-        return (kLow.includes('post') || kLow.includes('track')) && (kLow.includes('ii-ii') || kLow.includes('iiii') || kLow.includes('2-2') || kLow.includes('ii') || kLow.includes('2'));
-      });
-      if (match && match[1] !== null && match[1] !== '') return match[1];
-    }
-    return null;
+  // Detect if a test key represents a post assessment score
+  const isPostAssessment = (key) => {
+    const lower = (key || '').toLowerCase();
+    return lower.includes('post') || lower.includes('track name');
   };
 
-  const testList = Array.from({ length: 30 }, (_, i) => {
-    const num = i + 1;
-    let key = `Test ${num}`;
-    if (num === 9) key = "Track Name I";
-    if (num === 23) key = "Track Name II";
+  // Natural sort: extract leading number for "Test N" style keys
+  const extractTestNum = (key) => {
+    const m = key.match(/(?:test\s*)(\d+)/i);
+    return m ? parseInt(m[1], 10) : null;
+  };
 
-    const scoreVal = getScoreForTest(num, key);
-    const isUnattempted = scoreVal === null || scoreVal === undefined || scoreVal === '';
+  // Build union of all test keys from test_scores and test_mappings
+  const allTestKeys = new Set([
+    ...Object.keys(rawScores),
+    ...Object.keys(mappings)
+  ]);
 
-    const rawDisplayName = (test_mappings && (test_mappings[key] || test_mappings[`Test ${num}`])) || key;
-    const displayName = shortenTestName(rawDisplayName);
+  const mappingKeys = Object.keys(mappings || {});
 
-    return {
-      name: displayName,
-      fullName: rawDisplayName,
-      num,
-      score: isUnattempted ? null : parseFloat(scoreVal),
-      isUnattempted
-    };
-  });
+  const testList = [...allTestKeys]
+    .sort((a, b) => {
+      const idxA = mappingKeys.indexOf(a);
+      const idxB = mappingKeys.indexOf(b);
+      if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+      if (idxA !== -1) return -1;
+      if (idxB !== -1) return 1;
+
+      const numA = extractTestNum(a);
+      const numB = extractTestNum(b);
+      if (numA !== null && numB !== null) return numA - numB;
+      if (numA !== null) return -1;
+      if (numB !== null) return 1;
+      return a.localeCompare(b);
+    })
+    .map((key, idx) => {
+      const scoreVal = rawScores[key];
+      const isUnattempted = scoreVal === null || scoreVal === undefined || scoreVal === '';
+      const rawDisplayName = mappings[key] || key;
+      const displayName = shortenTestName(rawDisplayName);
+      const isPost = isPostAssessment(key) || isPostAssessment(rawDisplayName);
+
+      return {
+        key,
+        name: displayName,
+        fullName: rawDisplayName,
+        num: idx + 1,
+        score: isUnattempted ? null : parseFloat(scoreVal),
+        isUnattempted,
+        isPost
+      };
+    });
 
   // Analytics Calculations
+  const totalTests = testList.length;
   const attemptedTests = testList.filter(t => !t.isUnattempted);
   const attemptedCount = attemptedTests.length;
-  const unattemptedCount = 30 - attemptedCount;
-  const attemptedPct = ((attemptedCount / 30) * 100).toFixed(2);
+  const unattemptedCount = totalTests - attemptedCount;
+  const attemptedPct = totalTests > 0 ? ((attemptedCount / totalTests) * 100).toFixed(2) : '0.00';
 
   const excellentCount = attemptedTests.filter(t => t.score >= 80).length;
   const goodCount = attemptedTests.filter(t => t.score >= 50 && t.score < 80).length;
   const needsImpCount = attemptedTests.filter(t => t.score < 50).length;
+  const denominator = totalTests > 1 ? totalTests - 1 : 1;
+
+  const postAssIndices = testList.reduce((acc, t, i) => {
+    if (t.isPost) acc.push(i);
+    return acc;
+  }, []);
+
+  const getMilestoneLabel = (postIndex) => {
+    const pos = postAssIndices.indexOf(postIndex);
+    if (pos === -1) return "Milestone";
+    
+    const romanYear = {1: "I", 2: "II", 3: "III", 4: "IV"}[selectedYear] || selectedYear;
+    const sortedSemKeys = Object.keys(domain_tracks || {})
+      .filter(key => key.startsWith(`${romanYear}-`))
+      .sort((a, b) => {
+        const semOrder = ["I-II", "II-I", "II-II", "III-I", "III-II", "IV-I", "IV-II"];
+        const indexA = semOrder.indexOf(a);
+        const indexB = semOrder.indexOf(b);
+        if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+        return a.localeCompare(b);
+      });
+    
+    if (pos < sortedSemKeys.length) {
+      const semKey = sortedSemKeys[pos];
+      const data = domain_tracks[semKey];
+      return data?.domain ? shortenTestName(data.domain) : `Track ${pos + 1}`;
+    }
+    
+    const postKeys = Object.keys(post_assessments || {});
+    if (pos < postKeys.length) {
+      return shortenTestName(postKeys[pos]);
+    }
+    
+    return `Track ${pos + 1}`;
+  };
+
+  const getSemTestRange = (semKey) => {
+    const postTests = testList.filter(t => t.isPost);
+    if (postTests.length === 0) return "";
+    if (semKey === 'I-II' || semKey === 'II-I') {
+      const firstPost = postTests[0];
+      return firstPost ? `1 - ${firstPost.num - 1}` : "";
+    } else {
+      const firstPost = postTests[0];
+      const secondPost = postTests[1];
+      if (firstPost && secondPost) {
+        return `${firstPost.num} - ${secondPost.num}`;
+      } else if (firstPost) {
+        return `${firstPost.num} - ${testList.length}`;
+      }
+      return "";
+    }
+  };
+
+  const getXAxisLabels = () => {
+    if (totalTests === 0) return [];
+    if (totalTests <= 6) {
+      return testList.map(t => t.name);
+    }
+    const indices = [];
+    const step = (totalTests - 1) / 5;
+    for (let i = 0; i < 6; i++) {
+      indices.push(Math.round(i * step));
+    }
+    const uniqueIndices = [...new Set(indices)].sort((a, b) => a - b);
+    return uniqueIndices.map(idx => ({
+      label: testList[idx].name,
+      left: `${(idx / denominator) * 100}%`
+    }));
+  };
+  const xAxisLabels = getXAxisLabels();
 
   // Band badge colors
   const getBandBadgeColor = (band) => {
@@ -184,34 +248,39 @@ const CDCDashboard = ({ user }) => {
   const strengths = [];
   const weaknesses = [];
 
-  const topDomains = Object.entries(domain_tracks || {}).filter(([_, d]) => d.performance >= 70);
-  if (topDomains.length > 0) {
-    strengths.push(`High performance in ${topDomains[0][1].domain}`);
+  if (attemptedCount === 0) {
+    strengths.push("No test performance data available for this academic year yet.");
+    weaknesses.push("No test performance data available for this academic year yet.");
   } else {
-    strengths.push('Good foundational performance across core technical modules');
-  }
+    const topDomains = Object.entries(domain_tracks || {}).filter(([_, d]) => d.performance >= 70);
+    if (topDomains.length > 0) {
+      strengths.push(`High performance in ${topDomains[0][1].domain}`);
+    } else {
+      strengths.push('Good foundational performance across core technical modules');
+    }
 
-  if (topPeakTest) {
-    strengths.push(`Peak score of ${topPeakTest.score}% in ${topPeakTest.name}`);
-  }
+    if (topPeakTest) {
+      strengths.push(`Peak score of ${topPeakTest.score}% in ${topPeakTest.name}`);
+    }
 
-  if (overall.cie_score >= 3.5) {
-    strengths.push(`Strong internal assessment score (${overall.cie_score}/5)`);
-  }
+    if (overall.cie_score >= 3.5) {
+      strengths.push(`Strong internal assessment score (${overall.cie_score}/5)`);
+    }
 
-  const weakDomains = Object.entries(domain_tracks || {}).filter(([_, d]) => d.performance < 60);
-  if (weakDomains.length > 0) {
-    weaknesses.push(`${weakDomains[0][1].domain} domain needs focused practice`);
-  } else {
-    weaknesses.push('Maintain consistency across higher complexity modules');
-  }
+    const weakDomains = Object.entries(domain_tracks || {}).filter(([_, d]) => d.performance < 60);
+    if (weakDomains.length > 0) {
+      weaknesses.push(`${weakDomains[0][1].domain} domain needs focused practice`);
+    } else {
+      weaknesses.push('Maintain consistency across higher complexity modules');
+    }
 
-  if (needsImpCount > 0) {
-    weaknesses.push(`Inconsistent performance in ${needsImpCount} attempted tests`);
-  }
+    if (needsImpCount > 0) {
+      weaknesses.push(`Inconsistent performance in ${needsImpCount} attempted tests`);
+    }
 
-  if (unattemptedCount > 0) {
-    weaknesses.push(`Complete remaining ${unattemptedCount} unattempted evaluation tests`);
+    if (unattemptedCount > 0) {
+      weaknesses.push(`Complete remaining ${unattemptedCount} unattempted evaluation tests`);
+    }
   }
 
   return (
@@ -275,7 +344,7 @@ const CDCDashboard = ({ user }) => {
           <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-sm flex flex-col justify-between items-center text-center">
             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">CDC Band</span>
             <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-2xl font-black shadow-md my-1 ${getBandBadgeColor(overall.cdc_band)}`}>
-              {overall.cdc_band || 'B'}
+              {overall.cdc_band || 'N/A'}
             </div>
             <span className="text-[11px] text-slate-400 font-medium">Performance Band</span>
           </div>
@@ -284,7 +353,7 @@ const CDCDashboard = ({ user }) => {
           <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-sm flex flex-col justify-between items-center text-center">
             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">CDC Grade Score</span>
             <div className="my-1 text-2xl sm:text-3xl font-black text-slate-900">
-              {overall.cdc_grade_score}%
+              {overall.cdc_grade_score != null ? `${overall.cdc_grade_score}%` : 'N/A'}
             </div>
             <span className="text-[11px] text-slate-400 font-medium">Overall Score</span>
           </div>
@@ -293,20 +362,22 @@ const CDCDashboard = ({ user }) => {
           <div className="bg-white p-5 rounded-3xl border border-indigo-100 bg-indigo-50/10 shadow-sm flex flex-col justify-between items-center text-center">
             <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-500">Batch Rank</span>
             <div className="my-1 text-2xl sm:text-3xl font-black text-indigo-700 flex items-baseline gap-0.5">
-              <span className="text-indigo-400 text-lg font-bold">#</span>
-              {overall.batch_rank || overall.cdc_rank || '207'}
+              {(overall.batch_rank || overall.cdc_rank) ? (
+                <><span className="text-indigo-400 text-lg font-bold">#</span>{overall.batch_rank || overall.cdc_rank}</>
+              ) : 'N/A'}
             </div>
-            <span className="text-[11px] text-indigo-400 font-medium">Out of {overall.batch_students || 815} Students</span>
+            <span className="text-[11px] text-indigo-400 font-medium">{overall.batch_students ? `Out of ${overall.batch_students} Students` : 'No data yet'}</span>
           </div>
 
           {/* Branch Rank */}
           <div className="bg-white p-5 rounded-3xl border border-purple-100 bg-purple-50/10 shadow-sm flex flex-col justify-between items-center text-center">
             <span className="text-[11px] font-bold uppercase tracking-wider text-purple-500">Branch Rank</span>
             <div className="my-1 text-2xl sm:text-3xl font-black text-purple-700 flex items-baseline gap-0.5">
-              <span className="text-purple-400 text-lg font-bold">#</span>
-              {overall.branch_rank || 'N/A'}
+              {overall.branch_rank ? (
+                <><span className="text-purple-400 text-lg font-bold">#</span>{overall.branch_rank}</>
+              ) : 'N/A'}
             </div>
-            <span className="text-[11px] text-purple-400 font-medium">Out of {overall.branch_students || 278} ({student.branch || 'N/A'})</span>
+            <span className="text-[11px] text-purple-400 font-medium">{overall.branch_students ? `Out of ${overall.branch_students} (${student.branch || 'N/A'})` : (student.branch || 'N/A')}</span>
           </div>
 
         </div>
@@ -322,7 +393,7 @@ const CDCDashboard = ({ user }) => {
           </div>
           <div>
             <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">Avg Performance</span>
-            <span className="text-lg font-black text-slate-900">{overall.avg_performance}%</span>
+            <span className="text-lg font-black text-slate-900">{overall.avg_performance != null ? `${overall.avg_performance}%` : 'N/A'}</span>
             <span className="block text-[10px] text-slate-400 truncate">Across all attempted tests</span>
           </div>
         </div>
@@ -334,7 +405,7 @@ const CDCDashboard = ({ user }) => {
           </div>
           <div>
             <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">Consistency Score</span>
-            <span className="text-lg font-black text-slate-900">{overall.consistency_score}%</span>
+            <span className="text-lg font-black text-slate-900">{overall.consistency_score != null ? `${overall.consistency_score}%` : 'N/A'}</span>
             <span className="block text-[10px] text-slate-400 truncate">Performance Consistency</span>
           </div>
         </div>
@@ -347,7 +418,7 @@ const CDCDashboard = ({ user }) => {
           <div>
             <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">CIE I (/ 5)</span>
             <span className="text-lg font-black text-slate-900">
-              {Math.min(overall.cie_score || 4, 5)} <span className="text-xs font-normal text-slate-400">/ 5</span>
+              {overall.cie_score != null ? <>{Math.min(Number(overall.cie_score), 5)} <span className="text-xs font-normal text-slate-400">/ 5</span></> : 'N/A'}
             </span>
             <span className="block text-[10px] text-slate-400 truncate">Internal Assessment I</span>
           </div>
@@ -361,7 +432,7 @@ const CDCDashboard = ({ user }) => {
           <div>
             <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">CIE II (/ 5)</span>
             <span className="text-lg font-black text-slate-900">
-              {overall.cie_score !== null && overall.cie_score !== undefined ? Math.ceil(Number(overall.cie_score) * 2) / 2 : 4.5} <span className="text-xs font-normal text-slate-400">/ 5</span>
+              {overall.cie_score != null ? <>{Math.ceil(Number(overall.cie_score) * 2) / 2} <span className="text-xs font-normal text-slate-400">/ 5</span></> : 'N/A'}
             </span>
             <span className="block text-[10px] text-slate-400 truncate">Internal Assessment II</span>
           </div>
@@ -397,12 +468,21 @@ const CDCDashboard = ({ user }) => {
             <div className="relative w-full h-48 pt-6 flex-1">
               {/* Crisp Un-stretched Milestone Text Labels */}
               <div className="absolute top-0 left-0 right-0 h-4 pointer-events-none z-10">
-                <span className="absolute -translate-x-1/2 text-[10px] font-extrabold text-purple-600 tracking-tight whitespace-nowrap" style={{ left: `${(8 / 29) * 100}%` }} title={domain_tracks?.["II-I"]?.domain}>
-                  {domain_tracks?.["II-I"]?.domain ? shortenTestName(domain_tracks["II-I"].domain) : "Track I"}
-                </span>
-                <span className="absolute -translate-x-1/2 text-[10px] font-extrabold text-purple-600 tracking-tight whitespace-nowrap" style={{ left: `${(22 / 29) * 100}%` }} title={domain_tracks?.["II-II"]?.domain}>
-                  {domain_tracks?.["II-II"]?.domain ? shortenTestName(domain_tracks["II-II"].domain) : "Track II"}
-                </span>
+                {postAssIndices.map(idx => {
+                  const t = testList[idx];
+                  const leftPct = (idx / denominator) * 100;
+                  const label = getMilestoneLabel(idx);
+                  return (
+                    <span 
+                      key={idx}
+                      className="absolute -translate-x-1/2 text-[10px] font-extrabold text-purple-600 tracking-tight whitespace-nowrap" 
+                      style={{ left: `${leftPct}%` }} 
+                      title={t.fullName}
+                    >
+                      {label}
+                    </span>
+                  );
+                })}
               </div>
 
               <svg className="w-full h-full overflow-visible" viewBox="0 0 800 150" preserveAspectRatio="none">
@@ -420,25 +500,40 @@ const CDCDashboard = ({ user }) => {
               <line x1="0" y1="120" x2="800" y2="120" stroke="#f1f5f9" strokeDasharray="4 4" vectorEffect="non-scaling-stroke" />
 
               {/* Dynamic Milestone vertical dashed lines perfectly aligned to dots */}
-              <line x1={(8 / 29) * 800} y1="0" x2={(8 / 29) * 800} y2="140" stroke="#a855f7" strokeDasharray="3 3" opacity="0.5" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
-              <line x1={(22 / 29) * 800} y1="0" x2={(22 / 29) * 800} y2="140" stroke="#a855f7" strokeDasharray="3 3" opacity="0.5" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+              {postAssIndices.map(idx => {
+                const xVal = (idx / denominator) * 800;
+                return (
+                  <line 
+                    key={idx}
+                    x1={xVal} 
+                    y1="0" 
+                    x2={xVal} 
+                    y2="140" 
+                    stroke="#a855f7" 
+                    strokeDasharray="3 3" 
+                    opacity="0.5" 
+                    strokeWidth="1.5" 
+                    vectorEffect="non-scaling-stroke" 
+                  />
+                );
+              })}
 
               {/* Polyline path connecting test scores */}
               {(() => {
                 const pts = testList.map((t, i) => {
-                  const x = (i / 29) * 800;
+                  const x = (i / denominator) * 800;
                   const score = t.isUnattempted ? 0 : t.score;
                   const y = 140 - (score / 100) * 120;
                   return { x, y, score, isUnattempted: t.isUnattempted };
                 });
                 
                 const pointsStr = pts.map(p => `${p.x},${p.y}`).join(' ');
-                const areaStr = `0,140 ${pointsStr} 800,140`;
+                const areaStr = pts.length > 0 ? `0,140 ${pointsStr} 800,140` : "0,140 800,140";
 
                 return (
                   <>
-                    <polygon fill="url(#emeraldTrendGrad)" points={areaStr} />
-                    <polyline fill="none" stroke="#10b981" strokeWidth="2.5" points={pointsStr} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+                    {pts.length > 0 && <polygon fill="url(#emeraldTrendGrad)" points={areaStr} />}
+                    {pts.length > 0 && <polyline fill="none" stroke="#10b981" strokeWidth="2.5" points={pointsStr} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />}
                     {testList.map((t, i) => {
                       const p = pts[i];
                       const isHovered = hoveredTest?.num === t.num;
@@ -471,10 +566,10 @@ const CDCDashboard = ({ user }) => {
 
             {/* Dynamic Hover Tooltip */}
             {(() => {
-              const active = hoveredTest || (topPeakTest ? { ...topPeakTest, x: (testList.findIndex(t=>t.num===topPeakTest.num)/29)*100 } : null);
+              const active = hoveredTest || (topPeakTest ? { ...topPeakTest, x: (testList.findIndex(t=>t.num===topPeakTest.num)/denominator)*100 } : null);
               if (!active) return null;
               
-              const leftPct = hoveredTest ? (hoveredTest.x / 500) * 100 : active.x;
+              const leftPct = hoveredTest ? (hoveredTest.x / 800) * 100 : active.x;
               const isUnatt = active.isUnattempted;
 
               return (
@@ -494,14 +589,22 @@ const CDCDashboard = ({ user }) => {
 
           {/* Axis Labels */}
 
-          <div className="flex justify-between text-[10px] text-slate-400 font-semibold pt-2 border-t border-slate-100">
-            <span>Test 1</span>
-            <span>Test 5</span>
-            <span>Test 10</span>
-            <span>Test 15</span>
-            <span>Test 20</span>
-            <span>Test 25</span>
-            <span>Test 30</span>
+          <div className="relative h-6 text-[10px] text-slate-400 font-semibold pt-2 border-t border-slate-100 w-full select-none">
+            {xAxisLabels.map((item, idx) => {
+              const labelText = typeof item === 'string' ? item : item.label;
+              const leftStyle = typeof item === 'string' 
+                ? `${(idx / (xAxisLabels.length - 1 || 1)) * 100}%` 
+                : item.left;
+              return (
+                <span 
+                  key={idx} 
+                  className="absolute -translate-x-1/2 whitespace-nowrap" 
+                  style={{ left: leftStyle }}
+                >
+                  {labelText}
+                </span>
+              );
+            })}
           </div>
         </div>
 
@@ -535,7 +638,7 @@ const CDCDashboard = ({ user }) => {
               />
             </svg>
             <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-              <span className="text-2xl font-black text-slate-900">30</span>
+              <span className="text-2xl font-black text-slate-900">{totalTests}</span>
               <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Total Tests</span>
             </div>
           </div>
@@ -574,7 +677,7 @@ const CDCDashboard = ({ user }) => {
                 <span className="font-bold text-slate-900">{excellentCount}</span>
               </div>
               <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                <div className="bg-emerald-500 h-full rounded-full transition-all duration-500" style={{ width: `${(excellentCount/30)*100}%` }}></div>
+                <div className="bg-emerald-500 h-full rounded-full transition-all duration-500" style={{ width: totalTests > 0 ? `${(excellentCount/totalTests)*100}%` : '0%' }}></div>
               </div>
             </div>
 
@@ -585,7 +688,7 @@ const CDCDashboard = ({ user }) => {
                 <span className="font-bold text-slate-900">{goodCount}</span>
               </div>
               <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                <div className="bg-blue-500 h-full rounded-full transition-all duration-500" style={{ width: `${(goodCount/30)*100}%` }}></div>
+                <div className="bg-blue-500 h-full rounded-full transition-all duration-500" style={{ width: totalTests > 0 ? `${(goodCount/totalTests)*100}%` : '0%' }}></div>
               </div>
             </div>
 
@@ -596,7 +699,7 @@ const CDCDashboard = ({ user }) => {
                 <span className="font-bold text-slate-900">{needsImpCount}</span>
               </div>
               <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                <div className="bg-amber-500 h-full rounded-full transition-all duration-500" style={{ width: `${(needsImpCount/30)*100}%` }}></div>
+                <div className="bg-amber-500 h-full rounded-full transition-all duration-500" style={{ width: totalTests > 0 ? `${(needsImpCount/totalTests)*100}%` : '0%' }}></div>
               </div>
             </div>
 
@@ -607,13 +710,13 @@ const CDCDashboard = ({ user }) => {
                 <span className="font-bold text-slate-900">{unattemptedCount}</span>
               </div>
               <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                <div className="bg-slate-300 h-full rounded-full transition-all duration-500" style={{ width: `${(unattemptedCount/30)*100}%` }}></div>
+                <div className="bg-slate-300 h-full rounded-full transition-all duration-500" style={{ width: totalTests > 0 ? `${(unattemptedCount/totalTests)*100}%` : '0%' }}></div>
               </div>
             </div>
           </div>
 
           <div className="text-[10px] text-slate-400 font-medium pt-2 border-t border-slate-100 text-center">
-            Score breakdown across 30 standard tests
+            Score breakdown across {totalTests} standard tests
           </div>
         </div>
 
@@ -659,7 +762,7 @@ const CDCDashboard = ({ user }) => {
                       <div className="bg-emerald-500 h-full rounded-full" style={{ width: `${Math.min(data.performance, 100)}%` }}></div>
                     </div>
                     <div className="pt-2 border-t border-slate-200/60 text-[10px] text-slate-500 space-y-0.5">
-                      <p>Tests: <strong className="text-slate-700">{semKey==='I-II'||semKey==='II-I'?'1 - 8':'9 - 23'}</strong></p>
+                      {getSemTestRange(semKey) && <p>Tests: <strong className="text-slate-700">{getSemTestRange(semKey)}</strong></p>}
                       <p className="text-indigo-600 font-semibold truncate">Track Score: {data.performance}%</p>
                     </div>
                   </div>
@@ -815,7 +918,7 @@ const CDCDashboard = ({ user }) => {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
             <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
               <BookOpen className="text-emerald-600" size={18} />
-              <span>COMPLETE TEST PERFORMANCE (Test 1 – Test 30)</span>
+              <span>COMPLETE TEST PERFORMANCE {totalTests > 0 ? `(Test 1 – Test ${totalTests})` : ''}</span>
             </h3>
             
             {/* Top Legend Pills */}
@@ -829,7 +932,7 @@ const CDCDashboard = ({ user }) => {
 
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2.5">
             {testList.map((t) => {
-              const isPostAss = t.num === 9 || t.num === 23;
+              const isPostAss = t.isPost;
               let scoreColor = 'text-slate-400 font-normal';
               let scoreText = '-';
 

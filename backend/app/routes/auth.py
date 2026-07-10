@@ -26,6 +26,7 @@ ADMIN_PREFIXES_BRANCH = {
     # Branch Access
     "cse.hod": ("CSE", "HOD CSE"),
     "csm.hod": ("CSM", "HOD CSM"),
+    "csd.hod": ("CSD", "HOD CSD"),
     "ece.hod": ("ECE", "HOD ECE"),
     "eee.hod": ("EEE", "HOD EEE"),
     "mech.hod": ("MECH", "HOD MECH"),
@@ -57,7 +58,7 @@ def google_login(payload: GoogleLoginRequest, db: Session = Depends(get_db)):
     
     # Check if prefix matches an authorized Admin or Branch HOD prefix (allowing both @hitam.org and @gmail.com/etc.)
     if prefix in ADMIN_PREFIXES_SUPER:
-        role = "super_admin"
+        role = prefix if prefix in ["principal", "director", "registrar", "dean.academics"] else "super_admin"
         assigned_branch = None
         default_name = payload.name or ADMIN_PREFIXES_SUPER[prefix]
         parsed_data = {
