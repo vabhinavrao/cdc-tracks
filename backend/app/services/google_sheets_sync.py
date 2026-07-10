@@ -47,18 +47,45 @@ def resolve_track_id(track_val: str, db) -> str:
     if not track_val:
         return None
     val_clean = track_val.strip()
+    val_lower = val_clean.lower()
     
-    # 1. Try direct lookup in DOMAIN_TO_TRACK_ID
+    # 1. Direct tab names mapping
+    tab_mappings = {
+        "software": "software-engineer-software-developer",
+        "cloud-devops-security": "cloud-engineer-devops-engineer-cyber-security-engineer",
+        "da - data scientist - aiml": "data-analyst-data-scientist-ai-ml-engineer",
+        "da-data scientist-aiml": "data-analyst-data-scientist-ai-ml-engineer",
+        "fsd": "full-stack-developer",
+        "vlsi-semiconductor engineer": "vlsi-semiconductor-engineer",
+        "vlsi-semiconductorengineer": "vlsi-semiconductor-engineer",
+        "ecad": "vlsi-semiconductor-engineer",
+        "design-cae-manufacturing": "design-cae-manufacturing-engineer",
+        "design-cae-manufacturing engineer": "design-cae-manufacturing-engineer",
+        "embedded systems": "embedded-system-iot-design-engineer"
+    }
+    
+    if val_lower in tab_mappings:
+        return tab_mappings[val_lower]
+        
+    # Check after removing non-alphanumeric characters for keys in tab_mappings
+    import re
+    val_alphanumeric = re.sub(r'[^a-z0-9]', '', val_lower)
+    for k, v in tab_mappings.items():
+        k_alphanumeric = re.sub(r'[^a-z0-9]', '', k)
+        if val_alphanumeric == k_alphanumeric:
+            return v
+
+    # 2. Try direct lookup in DOMAIN_TO_TRACK_ID
     from app.utils import DOMAIN_TO_TRACK_ID
     if val_clean in DOMAIN_TO_TRACK_ID:
         return DOMAIN_TO_TRACK_ID[val_clean]
         
-    # 2. Try case-insensitive lookup
+    # 3. Try case-insensitive lookup
     for k, v in DOMAIN_TO_TRACK_ID.items():
-        if k.lower().strip() == val_clean.lower():
+        if k.lower().strip() == val_lower:
             return v
             
-    # 3. Check if it matches any Track.id (slug) or Track.track_name in the database
+    # 4. Check if it matches any Track.id (slug) or Track.track_name in the database
     from app.models import Track
     track = db.query(Track).filter(
         (Track.id == val_clean) | (Track.track_name == val_clean)
@@ -66,18 +93,17 @@ def resolve_track_id(track_val: str, db) -> str:
     if track:
         return track.id
         
-    # 4. Partial substring matching against DOMAIN_TO_TRACK_ID keys
-    val_norm = "".join(val_clean.lower().split())
+    # 5. Non-alphanumeric stripped substring matching against DOMAIN_TO_TRACK_ID keys
     for k, v in DOMAIN_TO_TRACK_ID.items():
-        k_norm = "".join(k.lower().split())
-        if val_norm in k_norm or k_norm in val_norm:
+        k_alphanumeric = re.sub(r'[^a-z0-9]', '', k.lower())
+        if val_alphanumeric in k_alphanumeric or k_alphanumeric in val_alphanumeric:
             return v
             
-    # 5. Partial substring matching against DB Track names
+    # 6. Non-alphanumeric stripped substring matching against DB Track names
     tracks = db.query(Track).all()
     for t in tracks:
-        t_name_norm = "".join(t.track_name.lower().split())
-        if val_norm in t_name_norm or t_name_norm in val_norm:
+        t_name_alphanumeric = re.sub(r'[^a-z0-9]', '', t.track_name.lower())
+        if val_alphanumeric in t_name_alphanumeric or t_name_alphanumeric in val_alphanumeric:
             return t.id
             
     return val_clean
@@ -942,13 +968,21 @@ def sync_google_sheet_connection(db: Session, connection_id: int, credentials_pa
             roll_col_mapped = mappings.get("roll_number")
             finalised_domain_col_mapped = mappings.get("finalised_domain")
             
-            has_domain_col = False
-            if finalised_domain_col_mapped in first_headers:
-                has_domain_col = True
-            else:
-                has_domain_col = find_matching_header(first_headers, ["finalised domain", "finalised track", "selected domain", "selected track", "track", "domain"]) is not None
-                
-            use_multi_tab = len(worksheets) > 1 and not has_domain_col
+            # Determine if this is a multi-tab track sheet by checking if tabs resolve to valid DB tracks
+            use_multi_tab = False
+            if len(worksheets) > 1:
+                from app.models import Track
+                valid_track_ids = {t.id for t in db.query(Track).all()}
+                track_tabs_count = 0
+                for wks in worksheets:
+                    title_clean = wks.title.strip()
+                    if title_clean.lower() in ["summary", "overall", "instructions", "template", "sheet1", "sheet 1", "readme", "dashboard"]:
+                        continue
+                    resolved = resolve_track_id(title_clean, db)
+                    if resolved in valid_track_ids:
+                        track_tabs_count += 1
+                if track_tabs_count > 1:
+                    use_multi_tab = True
             
             if use_multi_tab:
                 logger.info("Syncing finalized domains using multi-tab track matching (each tab represents a track).")

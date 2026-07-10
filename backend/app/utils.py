@@ -104,17 +104,48 @@ def get_auto_allocated_track_id(db, roll_number: str):
     
     roll_clean = roll_number.strip().upper()
     
+    # Direct mapping helper
+    def resolve_raw_to_slug(raw_val: str) -> str:
+        if not raw_val:
+            return None
+        val_lower = raw_val.strip().lower()
+        tab_mappings = {
+            "software": "software-engineer-software-developer",
+            "cloud-devops-security": "cloud-engineer-devops-engineer-cyber-security-engineer",
+            "da - data scientist - aiml": "data-analyst-data-scientist-ai-ml-engineer",
+            "da-data scientist-aiml": "data-analyst-data-scientist-ai-ml-engineer",
+            "fsd": "full-stack-developer",
+            "vlsi-semiconductor engineer": "vlsi-semiconductor-engineer",
+            "vlsi-semiconductorengineer": "vlsi-semiconductor-engineer",
+            "ecad": "vlsi-semiconductor-engineer",
+            "design-cae-manufacturing": "design-cae-manufacturing-engineer",
+            "design-cae-manufacturing engineer": "design-cae-manufacturing-engineer",
+            "embedded systems": "embedded-system-iot-design-engineer"
+        }
+        if val_lower in tab_mappings:
+            return tab_mappings[val_lower]
+            
+        import re
+        val_alphanumeric = re.sub(r'[^a-z0-9]', '', val_lower)
+        for k, v in tab_mappings.items():
+            k_alphanumeric = re.sub(r'[^a-z0-9]', '', k)
+            if val_alphanumeric == k_alphanumeric:
+                return v
+                
+        if val_lower in DOMAIN_TO_TRACK_ID:
+            return DOMAIN_TO_TRACK_ID[val_lower]
+        for k, v in DOMAIN_TO_TRACK_ID.items():
+            if k.lower().strip() == val_lower:
+                return v
+            k_alphanumeric = re.sub(r'[^a-z0-9]', '', k.lower())
+            if val_alphanumeric in k_alphanumeric or k_alphanumeric in val_alphanumeric:
+                return v
+        return raw_val
+
     # 1. Check FinalisedTrack
     fin = db.query(FinalisedTrack).filter(func.upper(FinalisedTrack.roll_number) == roll_clean).first()
     if fin and fin.track_id:
-        track_id_clean = fin.track_id.strip()
-        # Resolve if it is stored as a descriptive domain name instead of a slug
-        if track_id_clean in DOMAIN_TO_TRACK_ID:
-            return DOMAIN_TO_TRACK_ID[track_id_clean]
-        for k, v in DOMAIN_TO_TRACK_ID.items():
-            if k.lower().strip() == track_id_clean.lower():
-                return v
-        return track_id_clean
+        return resolve_raw_to_slug(fin.track_id)
         
     # 2. Check CDCPerformance domain_tracks
     cdc = db.query(CDCPerformance).filter(
@@ -125,7 +156,6 @@ def get_auto_allocated_track_id(db, roll_number: str):
             sem_info = cdc.domain_tracks.get(sem)
             if isinstance(sem_info, dict) and sem_info.get("domain"):
                 dom_name = str(sem_info.get("domain")).strip()
-                if dom_name in DOMAIN_TO_TRACK_ID:
-                    return DOMAIN_TO_TRACK_ID[dom_name]
+                return resolve_raw_to_slug(dom_name)
     return None
 
