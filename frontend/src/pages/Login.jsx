@@ -57,7 +57,10 @@ const Login = ({ onLoginSuccess }) => {
       { email: 'mech.hod@gmail.com', name: 'MECH HOD', desc: 'Branch Access (MECH)' }
     ],
     student: [
-      { email: '24121A0501@hitam.org', name: 'Demo Student', desc: 'Student' }
+      { email: '24E51A0202@hitam.org', name: 'Demo Student (24E51A0202)', desc: 'Student - software-engineer-software-developer' },
+      { email: '24E51A0314@hitam.org', name: 'Demo Student (24E51A0314)', desc: 'Student - software-engineer-software-developer' },
+      { email: '24E51A6774@hitam.org', name: 'Demo Student (24E51A6774)', desc: 'Student - software-engineer-software-developer' },
+      { email: '24121A0501@hitam.org', name: 'Demo Student (Default)', desc: 'Student' }
     ]
   };
 
