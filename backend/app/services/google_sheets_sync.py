@@ -17,6 +17,62 @@ def resolve_batch_year(db, roll, fallback=None):
     """
     return fallback
 
+
+def detention_allowed(records, roll_getter, batch_year, threshold=0.30):
+    """
+    Guardrail against a wrong/combined sheet being connected. Returns False when an
+    implausibly large share of a sheet's rows belong to an EARLIER cohort than the
+    sheet's batch — in that case we skip auto-flagging detentions rather than
+    mass-detaining everyone. A correctly scoped batch sheet has only a handful of
+    genuinely detained students and passes.
+    """
+    try:
+        sheet_start = int(str(batch_year).split("-")[0])
+    except (ValueError, AttributeError, TypeError):
+        return True
+    total = 0
+    earlier = 0
+    for row in records:
+        rb = parse_batch_from_roll(str(roll_getter(row) or "").strip())
+        if rb:
+            total += 1
+            if rb[0] < sheet_start:
+                earlier += 1
+    if total == 0:
+        return True
+    return (earlier / total) <= threshold
+
+
+def title_mapping_warnings(title, batch_year, academic_year):
+    """
+    Validation only (changes nothing): compares a sheet's title against the batch and
+    academic year this connection is configured for, and returns human-readable
+    warnings on mismatch (e.g. a title of "2024-28 II-I/II-II ..." while the
+    connection is set to batch 2025-2029 / Year 1). Surfaced in the sync message so
+    the admin can confirm each sheet is mapped to the right slot.
+    """
+    import re
+    warnings = []
+    if not title:
+        return warnings
+    t = str(title)
+    m = re.search(r'(20\d{2}|\d{2})\s*-\s*(20\d{2}|\d{2})', t)
+    if m and batch_year:
+        title_start = m.group(1)
+        if len(title_start) == 2:
+            title_start = "20" + title_start
+        cfg_start = str(batch_year).split("-")[0]
+        if title_start != cfg_start:
+            warnings.append(f"sheet title shows batch '{m.group(0)}' but this connection is set to '{batch_year}'")
+    ym = re.search(r'\b(IV|III|II|I)\s*-\s*(?:IV|III|II|I)\b', t.upper())
+    if ym and academic_year:
+        roman = {"I": 1, "II": 2, "III": 3, "IV": 4}
+        title_year = roman.get(ym.group(1))
+        if title_year and title_year != academic_year:
+            warnings.append(f"sheet title suggests Year {title_year} but this connection is set to Year {academic_year}")
+    return warnings
+
+
 def clean_sheet_value(val):
     """
     Cleans Google Sheet cell values.
@@ -435,6 +491,8 @@ def sync_live_google_sheets(db: Session, sheet1_id_or_url: str, sheet2_id_or_url
         except Exception as e_match:
             logger.warning(f"Error matching connection context in sync_live: {e_match}")
 
+        flag_det_live = detention_allowed(records1, lambda r: r.get("Roll Number") or r.get("Roll No"), batch_year)
+
         for row in records1:
             roll = str(row.get("Roll Number") or row.get("Roll No") or "").strip()
             if not roll:
@@ -494,7 +552,7 @@ def sync_live_google_sheets(db: Session, sheet1_id_or_url: str, sheet2_id_or_url
             if roll in domain_map:
                 cdc_obj.domain_tracks = domain_map[roll]
 
-            ensure_student_user(db, roll, row, batch_year=batch_year)
+            ensure_student_user(db, roll, row, batch_year=batch_year, flag_detentions=flag_det_live)
             synced_count += 1
 
         # Update or create default overall_marks connection to store test_mappings
@@ -602,6 +660,11 @@ def sync_google_sheet_connection(db: Session, connection_id: int, credentials_pa
         records = fetch_sheet_records(wks)
         if not records:
             raise Exception("No data found in the first sheet of the spreadsheet.")
+
+        # Validation only (changes nothing): warn if the sheet title disagrees with
+        # the batch/year this connection is configured for.
+        title_warnings = title_mapping_warnings(getattr(sheet, "title", ""), connection.batch_year, connection.academic_year)
+        flag_det = True  # detention guardrail; recomputed from the roster below
             
         # Get raw headers
         all_values = wks.get_all_values(value_render_option='FORMATTED_VALUE')
@@ -673,6 +736,11 @@ def sync_google_sheet_connection(db: Session, connection_id: int, credentials_pa
             roll_col = find_matching_header(headers, ROLL_CANDIDATES)
         if not roll_col:
             raise Exception(f"Could not identify a 'Roll Number' column in the sheet. Available columns: {', '.join(headers[:10])}...")
+
+        # Detention guardrail: only auto-flag detentions when a plausible share of the
+        # sheet belongs to this batch; a wrong/combined sheet (lots of earlier cohorts)
+        # skips flagging instead of mass-detaining.
+        flag_det = detention_allowed(records, lambda r: r.get(roll_col), connection.batch_year)
             
         if not name_col:
             NAME_CANDIDATES = ["name", "student name", "studentname"]
@@ -826,7 +894,7 @@ def sync_google_sheet_connection(db: Session, connection_id: int, credentials_pa
                 existing_post_assessments.update(new_post_assessments)
                 cdc_obj.post_assessments = existing_post_assessments
                 
-                ensure_student_user(db, roll, row, name_col=name_col, branch_col=branch_col, email_col=email_col, batch_year=connection.batch_year)
+                ensure_student_user(db, roll, row, name_col=name_col, branch_col=branch_col, email_col=email_col, batch_year=connection.batch_year, flag_detentions=flag_det)
                 synced_count += 1
                 
         elif connection.sheet_type == "domain_info":
@@ -895,7 +963,7 @@ def sync_google_sheet_connection(db: Session, connection_id: int, credentials_pa
                             "performance": p_val
                         }
                 cdc_obj.domain_tracks = existing_domain_tracks
-                ensure_student_user(db, roll, row, name_col=name_col, branch_col=branch_col, email_col=email_col, batch_year=connection.batch_year)
+                ensure_student_user(db, roll, row, name_col=name_col, branch_col=branch_col, email_col=email_col, batch_year=connection.batch_year, flag_detentions=flag_det)
                 synced_count += 1
                 
         elif connection.sheet_type == "semester_projects":
@@ -962,7 +1030,7 @@ def sync_google_sheet_connection(db: Session, connection_id: int, credentials_pa
                     
                 cdc_obj.projects = existing_projects
                 
-                ensure_student_user(db, roll, row, name_col=name_col, branch_col=branch_col, email_col=email_col, batch_year=connection.batch_year)
+                ensure_student_user(db, roll, row, name_col=name_col, branch_col=branch_col, email_col=email_col, batch_year=connection.batch_year, flag_detentions=flag_det)
                 synced_count += 1
                 
         elif connection.sheet_type == "finalised_domains":
@@ -1024,6 +1092,10 @@ def sync_google_sheet_connection(db: Session, connection_id: int, credentials_pa
                     
                     # Semester context
                     wks_sem_col = find_matching_header(wks_headers, ["semester", "sem"])
+
+                    wks_flag = detention_allowed(wks_records, lambda r: r.get(wks_roll_col), connection.batch_year)
+                    if not wks_flag:
+                        flag_det = False
                     
                     for row in wks_records:
                         roll = str(row.get(wks_roll_col) or "").strip()
@@ -1083,7 +1155,7 @@ def sync_google_sheet_connection(db: Session, connection_id: int, credentials_pa
                         else:
                             final_track.track_id = resolved_track
                             
-                        ensure_student_user(db, roll, row, name_col=wks_name_col, branch_col=wks_branch_col, email_col=wks_email_col, batch_year=connection.batch_year)
+                        ensure_student_user(db, roll, row, name_col=wks_name_col, branch_col=wks_branch_col, email_col=wks_email_col, batch_year=connection.batch_year, flag_detentions=wks_flag)
                         synced_count += 1
             else:
                 # Single-sheet or column-based finalised domain sync fallback
@@ -1154,12 +1226,18 @@ def sync_google_sheet_connection(db: Session, connection_id: int, credentials_pa
                             final_track.track_id = resolved_track
                     
                     cdc_obj.finalised_domains = existing_finalised
-                    ensure_student_user(db, roll, row, name_col=name_col, branch_col=branch_col, email_col=email_col, batch_year=connection.batch_year)
+                    ensure_student_user(db, roll, row, name_col=name_col, branch_col=branch_col, email_col=email_col, batch_year=connection.batch_year, flag_detentions=flag_det)
                     synced_count += 1
                 
         connection.sync_status = "success"
         connection.last_synced = datetime.utcnow()
-        connection.sync_message = f"Successfully synced {synced_count} student records."
+        _msg = f"Successfully synced {synced_count} student records."
+        _warns = list(title_warnings)
+        if not flag_det:
+            _warns.append("auto-detention flagging was SKIPPED — an unusually high share of rows belong to earlier cohorts (possible wrong/combined sheet)")
+        if _warns:
+            _msg += "  ⚠ " + "; ".join(_warns)
+        connection.sync_message = _msg
         if connection.sheet_type == "overall_marks":
             connection.test_mappings = test_mappings
         db.commit()
