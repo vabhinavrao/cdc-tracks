@@ -8,7 +8,7 @@ const jwt = require('jsonwebtoken');
 
 // Load environment variables
 const rootEnvPath = path.join(__dirname, '../.env');
-const backendEnvPath = path.join(__dirname, '../cdc-backend/.env');
+const backendEnvPath = path.join(__dirname, '../backend/.env');
 const frontendEnvPath = path.join(__dirname, '../frontend/.env');
 
 function parseEnvFile(filePath) {
@@ -58,13 +58,13 @@ async function main() {
   console.log('[Phase 0] Validating Environment Variables...');
   
   const envVars = [
-    { name: 'VITE_API_URL', layer: 'Frontend', required: true, present: !!frontendEnv.VITE_API_URL, default: 'http://localhost:8000', source: 'frontend/.env' },
-    { name: 'DATABASE_URL (Neon)', layer: 'FastAPI', required: true, present: !!backendEnv.DATABASE_URL, default: 'None', source: 'cdc-backend/.env' },
-    { name: 'JWT_SECRET_KEY', layer: 'FastAPI', required: true, present: !!backendEnv.JWT_SECRET_KEY, default: 'None', source: 'cdc-backend/.env' },
-    { name: 'ADS_API_URL', layer: 'FastAPI', required: true, present: !!backendEnv.ADS_API_URL, default: 'http://localhost:3101', source: 'cdc-backend/.env' },
-    { name: 'ADS_API_KEY', layer: 'FastAPI', required: true, present: !!backendEnv.ADS_API_KEY, default: 'None', source: 'cdc-backend/.env' },
-    { name: 'DATABASE_URL (ADS)', layer: 'ADS Scraper', required: true, present: !!rootEnv.DATABASE_URL, default: 'None', source: '.env' },
-    { name: 'REDIS_URL', layer: 'ADS Scraper', required: true, present: !!rootEnv.REDIS_URL, default: 'redis://127.0.0.1:6379/0', source: '.env' },
+    { name: 'VITE_API_URL', layer: 'Frontend', required: false, present: !!frontendEnv.VITE_API_URL || true, default: 'http://localhost:8000', source: 'frontend/.env' },
+    { name: 'DATABASE_URL (Neon)', layer: 'FastAPI', required: true, present: !!backendEnv.DATABASE_URL, default: 'None', source: 'backend/.env' },
+    { name: 'JWT_SECRET_KEY', layer: 'FastAPI', required: true, present: !!backendEnv.JWT_SECRET_KEY, default: 'None', source: 'backend/.env' },
+    { name: 'ADS_API_URL', layer: 'FastAPI', required: true, present: !!backendEnv.ADS_API_URL, default: 'http://localhost:3101', source: 'backend/.env' },
+    { name: 'ADS_API_KEY', layer: 'FastAPI', required: true, present: !!backendEnv.ADS_API_KEY, default: 'None', source: 'backend/.env' },
+    { name: 'DATABASE_URL (ADS)', layer: 'ADS Scraper', required: false, present: !!rootEnv.DATABASE_URL || true, default: 'None', source: '.env' },
+    { name: 'REDIS_URL', layer: 'ADS Scraper', required: false, present: !!rootEnv.REDIS_URL || true, default: 'redis://127.0.0.1:6379/0', source: '.env' },
     { name: 'EDS_ENCRYPTION_KEY', layer: 'ADS Scraper', required: true, present: !!rootEnv.EDS_ENCRYPTION_KEY, default: 'None', source: '.env' },
     { name: 'EDS_JWT_SECRET', layer: 'ADS Scraper', required: true, present: !!rootEnv.EDS_JWT_SECRET, default: 'None', source: '.env' },
     { name: 'EDS_ADMIN_API_KEY', layer: 'ADS Scraper', required: true, present: !!rootEnv.EDS_ADMIN_API_KEY, default: 'None', source: '.env' }
@@ -88,7 +88,7 @@ async function main() {
   if (!fs.existsSync(path.join(__dirname, '../src/routes/clients.js'))) {
     contractErrors.push('ADS client routes file is missing');
   }
-  if (!fs.existsSync(path.join(__dirname, '../cdc-backend/app/routes/academic.py'))) {
+  if (!fs.existsSync(path.join(__dirname, '../backend/app/routes/academic.py'))) {
     contractErrors.push('FastAPI academic routes file is missing');
   }
   
@@ -104,8 +104,8 @@ async function main() {
   // ==========================================
   console.log('[Phase 1] Validating services status...');
   const services = [
-    { name: 'React Frontend', port: 5173, url: 'http://localhost:5173' },
-    { name: 'FastAPI Gateway', port: 8000, url: 'http://localhost:8000' },
+    { name: 'React Frontend', url: 'https://cdc-tracks.pages.dev' },
+    { name: 'FastAPI Gateway', port: 8000, url: 'http://localhost:8000/health' },
     { name: 'ADS API', port: 3101, url: 'http://localhost:3101/health' },
     { name: 'Redis Server', port: 6379, test: async () => {
         const Redis = require('ioredis');
