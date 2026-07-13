@@ -31,6 +31,10 @@ app.include_router(auth.router)
 app.include_router(student.router)
 app.include_router(admin.router)
 
+@app.get("/health")
+def health_check():
+    return {"status": "ok"}
+
 def generate_slug(name: str) -> str:
     """Helper to generate URL-friendly slugs, mirroring the frontend's trackLoader.js logic"""
     if not name:
