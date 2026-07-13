@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.database import engine, Base, SessionLocal
 from app.models import Track
-from app.routes import auth, student, admin
+from app.routes import auth, student, admin, academic
 
 app = FastAPI(title="HITAM Student Track Explorer API")
 
@@ -30,6 +30,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(student.router)
 app.include_router(admin.router)
+app.include_router(academic.router)
 
 @app.get("/health")
 def health_check():
