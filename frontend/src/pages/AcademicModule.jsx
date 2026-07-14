@@ -12,7 +12,7 @@ const TABS = [
   { id: 'dashboard', label: 'Academic Dashboard', icon: BookOpen, active: true },
   { id: 'attendance', label: 'Attendance Details', icon: BookMarked, active: true },
   { id: 'marks', label: 'Semester Grades', icon: Award, active: true },
-  { id: 'spf', label: 'SPF Band Analyzer', icon: TrendingUp, active: false, badge: 'Soon' },
+  { id: 'spf', label: 'SPF Band Analyzer', icon: TrendingUp, active: true },
   { id: 'timetable', label: 'Class Timetable', icon: Calendar, active: false, badge: 'Soon' }
 ];
 
@@ -21,7 +21,9 @@ export default function AcademicModule({ user }) {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
-  const [activeTab, setActiveTab] = useState('dashboard');
+  const [selectedSemester, setSelectedSemester] = useState('');
+  const [activeInternalTab, setActiveInternalTab] = useState('cie-1');
+  const [isFading, setIsFading] = useState(false);
   
   // Registration form states
   const [password, setPassword] = useState('');
@@ -31,6 +33,8 @@ export default function AcademicModule({ user }) {
   // Polling tracker
   const pollTimerRef = useRef(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isSnapshotExpanded, setIsSnapshotExpanded] = useState(false);
+  const [snapshotSort, setSnapshotSort] = useState('default');
 
   // Load summary on mount
   useEffect(() => {
@@ -39,6 +43,65 @@ export default function AcademicModule({ user }) {
       if (pollTimerRef.current) clearInterval(pollTimerRef.current);
     };
   }, []);
+
+  // Adjust active tab state dynamically if current selection is not available (Rules of Hooks safe)
+  useEffect(() => {
+    if (!data?.data) return;
+    const academicDataObj = data.data;
+    const marksList = academicDataObj.marks || [];
+    const attendanceObj = academicDataObj.attendance || {};
+    const spfBandsList = academicDataObj.spfBands || [];
+    
+    // Sort semesters to find current
+    const allSemSet = new Set();
+    if (Array.isArray(attendanceObj.previous_semesters)) {
+      attendanceObj.previous_semesters.forEach(s => {
+        if (s.semesterLabel) allSemSet.add(s.semesterLabel);
+      });
+    }
+    if (attendanceObj.semesterLabel) {
+      allSemSet.add(attendanceObj.semesterLabel);
+    }
+    if (Array.isArray(marksList)) {
+      marksList.forEach(exam => {
+        if (exam.term) allSemSet.add(exam.term);
+      });
+    }
+    if (Array.isArray(spfBandsList)) {
+      spfBandsList.forEach(b => {
+        if (b.semesterLabel) allSemSet.add(b.semesterLabel);
+      });
+    }
+
+    const semsSorted = Array.from(allSemSet).sort((a, b) => {
+      const semA = parseSemester(a);
+      const semB = parseSemester(b);
+      if (semA.year !== semB.year) return semA.year - semB.year;
+      return semA.sem - semB.sem;
+    });
+
+    const currSem = academicDataObj.student?.currentSemester || attendanceObj.semesterLabel || semsSorted[semsSorted.length - 1] || 'III-I';
+    const completedSems = semsSorted.filter(sem => sem !== currSem);
+    const activeSem = selectedSemester || completedSems[completedSems.length - 1] || '';
+
+    if (!activeSem) return;
+
+    const semExams = marksList.filter(exam => exam.term === activeSem);
+    const hasC1 = semExams.some(e => e.title?.includes('CIE-A1') || e.title?.includes('CIE-B1') || e.title?.includes('CIE-C1'));
+    const hasC2 = semExams.some(e => e.title?.includes('CIE-A2') || e.title?.includes('CIE-B2') || e.title?.includes('CIE-C2'));
+    const hasAssign = semExams.some(e => e.title?.includes('CIE-C1') || e.title?.includes('CIE-C2') || e.title?.toLowerCase().includes('assignment'));
+    const hasLb = semExams.some(e => e.examId?.startsWith('INTERNAL') && !e.title?.includes('CIE-A') && !e.title?.includes('CIE-B') && !e.title?.includes('CIE-C'));
+
+    const tabs = [];
+    if (hasC1) tabs.push('cie-1');
+    if (hasC2) tabs.push('cie-2');
+    if (hasAssign) tabs.push('assignment');
+    if (hasLb) tabs.push('lab');
+
+    if (tabs.length > 0 && !tabs.includes(activeInternalTab)) {
+      setActiveInternalTab(tabs[0]);
+    }
+  }, [selectedSemester, data, activeInternalTab]);
 
   const fetchSummary = async (initial = false) => {
     if (initial) setLoading(true);
@@ -108,13 +171,12 @@ export default function AcademicModule({ user }) {
     setIsRefreshing(true);
     try {
       await refreshERP();
-      // Start polling for background sync task
-      fetchSummary(false);
+      await fetchSummary(false);
     } catch (err) {
       console.error(err);
-      alert('Unable to schedule refresh. Please try again later.');
+      alert('Unable to refresh academic records. Please try again later.');
     } finally {
-      setTimeout(() => setIsRefreshing(false), 2000);
+      setIsRefreshing(false);
     }
   };
 
@@ -290,345 +352,594 @@ export default function AcademicModule({ user }) {
       </div>
     );
   }
-
   // 3. READY STATE (Displaying Academic Dashboard)
   const academicData = data?.data || {};
   const attendance = academicData.attendance || { overallPercentage: 0, held: 0, attended: 0, subjects: [] };
   const marks = academicData.marks || [];
+  const spfBands = academicData.spfBands || [];
+  const student = academicData.student || {};
 
-  // Circle Gauge styling parameters
-  const strokeDash = 2 * Math.PI * 54; // radius = 54
-  const strokeOffset = strokeDash - (strokeDash * (attendance.overallPercentage || 0)) / 100;
-  const isShortage = (attendance.overallPercentage || 0) < 75;
+  // Progress bar styling helper based on strict ranges
+  const getProgressBarStyles = (pct) => {
+    const percentage = parseFloat(pct) || 0;
+    let barColorClass = 'bg-red-500';
+    let textColorClass = 'text-red-600 bg-red-50 border-red-100';
+    let dotColorClass = 'bg-red-500';
+    
+    if (percentage === 100) {
+      barColorClass = 'bg-green-700';
+      textColorClass = 'text-green-800 bg-green-50 border-green-200';
+      dotColorClass = 'bg-green-700';
+    } else if (percentage >= 90) {
+      barColorClass = 'bg-green-600';
+      textColorClass = 'text-green-700 bg-green-50 border-green-150';
+      dotColorClass = 'bg-green-600';
+    } else if (percentage >= 80) {
+      barColorClass = 'bg-green-500';
+      textColorClass = 'text-green-600 bg-green-50 border-green-100';
+      dotColorClass = 'bg-green-500';
+    } else if (percentage >= 75) {
+      barColorClass = 'bg-amber-500';
+      textColorClass = 'text-amber-600 bg-amber-50 border-amber-100';
+      dotColorClass = 'bg-amber-500';
+    } else {
+      barColorClass = 'bg-red-500';
+      textColorClass = 'text-red-600 bg-red-50 border-red-100';
+      dotColorClass = 'bg-red-500';
+    }
+    
+    return { barColorClass, textColorClass, dotColorClass };
+  };
+
+  // Roman numerals parsing helper for sorting semesters chronologically
+  const parseSemester = (semStr) => {
+    if (!semStr) return { year: 0, sem: 0 };
+    const parts = semStr.split('/');
+    const yearRoman = parts[0]?.trim() || '';
+    const romanMap = { 'I': 1, 'II': 2, 'III': 3, 'IV': 4 };
+    const year = romanMap[yearRoman] || 1;
+    const semIndex = semStr.toLowerCase().includes('ii semester') ? 2 : 1;
+    return { year, sem: semIndex };
+  };
+
+  const formatShortSem = (label) => {
+    if (!label) return '';
+    const parts = label.split('/');
+    const year = parts[0]?.trim() || 'I';
+    const sem = label.toLowerCase().includes('ii semester') ? 'II' : 'I';
+    return `${year}-${sem}`;
+  };
+
+  const normalizeName = (name) => {
+    if (!name) return '';
+    return name.toLowerCase().replace(/[^a-z0-9]/g, '');
+  };
+
+  // Build unique semester list
+  const allSemestersSet = new Set();
+  if (Array.isArray(attendance.previous_semesters)) {
+    attendance.previous_semesters.forEach(s => {
+      if (s.semesterLabel) allSemestersSet.add(s.semesterLabel);
+    });
+  }
+  if (attendance.semesterLabel) {
+    allSemestersSet.add(attendance.semesterLabel);
+  }
+  if (Array.isArray(marks)) {
+    marks.forEach(exam => {
+      if (exam.term) allSemestersSet.add(exam.term);
+    });
+  }
+  if (Array.isArray(spfBands)) {
+    spfBands.forEach(b => {
+      if (b.semesterLabel) allSemestersSet.add(b.semesterLabel);
+    });
+  }
+
+  const semestersSorted = Array.from(allSemestersSet).sort((a, b) => {
+    const semA = parseSemester(a);
+    const semB = parseSemester(b);
+    if (semA.year !== semB.year) return semA.year - semB.year;
+    return semA.sem - semB.sem;
+  });
+
+  // Current Semester Info
+  const currentSem = student.currentSemester || attendance.semesterLabel || semestersSorted[semestersSorted.length - 1] || 'III-I';
+
+  // Completed Semesters List for Results dropdown
+  const completedSemList = semestersSorted.filter(sem => sem !== currentSem);
+
+  const selectedSem = selectedSemester || completedSemList[completedSemList.length - 1] || '';
+
+  // Current Semester Live Attendance (always static and distinct from dropdown selection)
+  const liveAttendance = {
+    overallPercentage: parseFloat(attendance.overallPercentage || attendance.overall_percentage) || 0,
+    held: attendance.held || 0,
+    attended: attendance.attended || 0,
+    subjects: attendance.subjects || []
+  };
+
+  const overallPercentage = liveAttendance.overallPercentage || 0;
+  const isShortage = overallPercentage < 75;
+  const strokeDash = 2 * Math.PI * 38; // radius = 38
+  const strokeOffset = strokeDash - (strokeDash * overallPercentage) / 100;
+
+  // Selected Semester SGPA
+  const semesterExternalExam = marks.find(e => e.term === selectedSem && e.examId?.startsWith('EXTERNAL'));
+  const semesterSgpa = semesterExternalExam?.sgpa ? semesterExternalExam.sgpa.toFixed(2) : 'N/A';
+
+  // Selected Semester SPF Band
+  const semesterSpfBands = spfBands.filter(b => b.semesterLabel === selectedSem);
+  const semesterSpfBand = semesterSpfBands.length > 0 ? semesterSpfBands[semesterSpfBands.length - 1].band : 'N/A';
+
+  // Overall CGPA
+  const completedSemesters = marks
+    .filter(exam => exam.sgpa && exam.examId?.startsWith('EXTERNAL'))
+    .sort((a, b) => {
+      const semA = parseSemester(a.term);
+      const semB = parseSemester(b.term);
+      if (semA.year !== semB.year) return semA.year - semB.year;
+      return semA.sem - semB.sem;
+    });
+  const latestSgpa = completedSemesters.length > 0 ? completedSemesters[completedSemesters.length - 1].sgpa.toFixed(2) : 'N/A';
+  const overallCgpa = student.cgpa || (completedSemesters.length > 0 ? (completedSemesters.reduce((acc, cur) => acc + (cur.sgpa || 0), 0) / completedSemesters.length).toFixed(2) : 'N/A');
+  const creditsEarned = student.cgpaCredits || 'N/A';
+
+  // Latest SPF Band Card Data
+  const latestSpf = spfBands.length > 0 ? spfBands[spfBands.length - 1] : null;
+
+  // Compute consolidated internal evaluations
+  const getInternalMarksData = () => {
+    const semesterExams = marks.filter(exam => exam.term === selectedSem);
+    const subNames = new Set();
+    semesterExams.forEach(exam => {
+      if (exam.examId?.startsWith('INTERNAL')) {
+        exam.items?.forEach(item => {
+          if (item.name) subNames.add(item.name);
+        });
+      }
+    });
+
+    return Array.from(subNames).map(subName => {
+      const subNorm = normalizeName(subName);
+
+      // CIE-1 = CIE-A1 + CIE-B1
+      const desc1 = semesterExams.find(e => e.title?.includes('CIE-A1'));
+      const obj1 = semesterExams.find(e => e.title?.includes('CIE-B1'));
+      const desc1Val = desc1?.items?.find(i => normalizeName(i.name) === subNorm)?.scored;
+      const obj1Val = obj1?.items?.find(i => normalizeName(i.name) === subNorm)?.scored;
+
+      let cie1Scored = null;
+      if ((desc1Val !== undefined && desc1Val !== null) || (obj1Val !== undefined && obj1Val !== null)) {
+        cie1Scored = (parseFloat(desc1Val) || 0) + (parseFloat(obj1Val) || 0);
+      }
+
+      // CIE-2 = CIE-A2 + CIE-B2
+      const desc2 = semesterExams.find(e => e.title?.includes('CIE-A2'));
+      const obj2 = semesterExams.find(e => e.title?.includes('CIE-B2'));
+      const desc2Val = desc2?.items?.find(i => normalizeName(i.name) === subNorm)?.scored;
+      const obj2Val = obj2?.items?.find(i => normalizeName(i.name) === subNorm)?.scored;
+
+      let cie2Scored = null;
+      if ((desc2Val !== undefined && desc2Val !== null) || (obj2Val !== undefined && obj2Val !== null)) {
+        cie2Scored = (parseFloat(desc2Val) || 0) + (parseFloat(obj2Val) || 0);
+      }
+
+      // Assignment = CIE-C1 + CIE-C2
+      const assign1 = semesterExams.find(e => e.title?.includes('CIE-C1'));
+      const assign2 = semesterExams.find(e => e.title?.includes('CIE-C2'));
+      const assign1Val = assign1?.items?.find(i => normalizeName(i.name) === subNorm)?.scored;
+      const assign2Val = assign2?.items?.find(i => normalizeName(i.name) === subNorm)?.scored;
+
+      let assignScored = null;
+      if ((assign1Val !== undefined && assign1Val !== null) || (assign2Val !== undefined && assign2Val !== null)) {
+        assignScored = (parseFloat(assign1Val) || 0) + (parseFloat(assign2Val) || 0);
+      }
+
+      // Total Internal
+      let totalScored = null;
+      if (cie1Scored !== null || cie2Scored !== null || assignScored !== null) {
+        totalScored = (cie1Scored || 0) + (cie2Scored || 0) + (assignScored || 0);
+      }
+
+      // Status calculation based on total (out of 80)
+      let status = '—';
+      let statusColor = 'text-slate-400';
+      if (totalScored !== null) {
+        const ratio = totalScored / 80;
+        if (ratio >= 0.75) {
+          status = 'Excellent';
+          statusColor = 'text-green-600 bg-green-50 border-green-100';
+        } else if (ratio >= 0.50) {
+          status = 'Average';
+          statusColor = 'text-amber-600 bg-amber-50 border-amber-100';
+        } else {
+          status = 'Needs Attention';
+          statusColor = 'text-orange-600 bg-orange-50 border-orange-100';
+        }
+      }
+
+      return {
+        subject: subName,
+        cie1: cie1Scored !== null ? cie1Scored : '—',
+        cie2: cie2Scored !== null ? cie2Scored : '—',
+        assignment: assignScored !== null ? assignScored : '—',
+        total: totalScored !== null ? totalScored : '—',
+        status,
+        statusColor
+      };
+    });
+  };
+
+  const internalMarksData = getInternalMarksData();
+
+  const handleSemesterChange = (e) => {
+    const val = e.target.value;
+    setIsFading(true);
+    setTimeout(() => {
+      setSelectedSemester(val);
+      setIsFading(false);
+    }, 200);
+  };
 
   return (
-    <div className="space-y-6">
-      {/* Top Section: Header & Sync Controls */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+    <div className="space-y-4">
+      {/* Top Header & Sync Panel */}
+      <div className="bg-white border border-slate-100 rounded-3xl p-4 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <div className="flex items-center gap-2 text-xs font-bold text-blue-600 uppercase tracking-wider">
-            <GraduationCap size={14} />
-            <span>Academic Portal</span>
+          <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Current Semester</span>
+          <div className="flex items-center gap-2 mt-0.5">
+            <h1 className="text-base font-extrabold text-slate-800 tracking-tight">{currentSem}</h1>
+            <span className="text-[8px] font-extrabold text-blue-600 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-full uppercase">Live</span>
           </div>
-          <h1 className="text-2xl font-extrabold text-slate-800 mt-1">Student ERP Integration</h1>
-          <p className="text-slate-500 text-sm mt-0.5">
-            Verified records from University ERP (Last updated: {data?.lastSuccessAt ? new Date(data.lastSuccessAt).toLocaleString() : 'N/A'})
-          </p>
         </div>
 
-        <div className="flex items-center gap-3 w-full md:w-auto">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full md:w-auto">
+          {/* Semester Selector Dropdown */}
+          <div className="flex items-center gap-2 bg-slate-50 border border-slate-200/80 p-1 rounded-xl">
+            <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider pl-2.5">Viewing Academic Results</span>
+            <select
+              value={selectedSem}
+              onChange={handleSemesterChange}
+              className="bg-white border border-slate-150 text-slate-700 font-extrabold text-xs rounded-lg py-1.5 px-2.5 focus:outline-none focus:border-blue-500 shadow-sm transition-all cursor-pointer"
+            >
+              {completedSemList.map((sem, idx) => (
+                <option key={idx} value={sem}>
+                  {formatShortSem(sem)}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <button
             onClick={handleManualSync}
             disabled={isRefreshing}
-            className="flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-50 hover:bg-blue-100 text-blue-600 disabled:text-blue-400 font-bold text-sm rounded-xl transition-all cursor-pointer grow md:grow-0"
+            className="flex items-center justify-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white disabled:bg-blue-400 font-bold text-xs rounded-xl transition-all cursor-pointer shadow-sm shadow-blue-500/10"
           >
-            <RefreshCw size={15} className={`transition-transform duration-700 ${isRefreshing ? 'rotate-180' : ''}`} />
+            <RefreshCw size={12} className={`transition-transform duration-700 ${isRefreshing ? 'rotate-180' : ''}`} />
             <span>{isRefreshing ? 'Syncing...' : 'Sync ERP'}</span>
           </button>
         </div>
       </div>
 
-      {/* Tabs navigation */}
-      <div className="flex border-b border-slate-200 gap-1 overflow-x-auto pb-px">
-        {TABS.map((tab) => {
-          const Icon = tab.icon;
-          const isActive = activeTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              disabled={!tab.active}
-              onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 px-5 py-3 border-b-2 font-bold text-sm transition-all whitespace-nowrap ${
-                !tab.active 
-                  ? 'text-slate-300 cursor-not-allowed border-transparent' 
-                  : isActive
-                    ? 'border-blue-600 text-blue-600'
-                    : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300 cursor-pointer'
-              }`}
-            >
-              <Icon size={16} />
-              <span>{tab.label}</span>
-              {tab.badge && (
-                <span className="text-[9px] px-1.5 py-0.5 bg-slate-100 text-slate-400 font-extrabold rounded-full uppercase tracking-wider shrink-0">
-                  {tab.badge}
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Active Tab render container */}
-      <div className="space-y-6">
-        {activeTab === 'dashboard' && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            
-            {/* Overall Attendance Card */}
-            <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm flex flex-col justify-between relative overflow-hidden">
-              <div className="flex justify-between items-start">
-                <div>
-                  <h3 className="font-extrabold text-slate-800">Overall Attendance</h3>
-                  <p className="text-slate-400 text-xs mt-0.5">Scraped current semester log</p>
-                </div>
-                <span className={`text-[10px] font-extrabold uppercase tracking-wider px-2.5 py-1 rounded-full ${
-                  isShortage ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'
-                }`}>
-                  {isShortage ? 'Shortage Warning' : 'On Track'}
-                </span>
+      {/* Main 2-Column Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-10 lg:grid-cols-12 gap-4 items-start">
+        
+        {/* LEFT COLUMN: Academic Snapshot (35% width) */}
+        <div className="md:col-span-4 lg:col-span-4 space-y-4">
+          
+          {/* Card 1: Live Attendance progress */}
+          <div className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex flex-col justify-between items-center text-center relative overflow-hidden">
+            <div className="w-full flex justify-between items-start">
+              <div className="text-left">
+                <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Current Attendance</span>
+                <span className="text-[11px] font-bold text-slate-600 mt-0.5">{formatShortSem(currentSem)} (Live)</span>
               </div>
+              <span className={`text-[8px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded border ${
+                isShortage ? 'bg-red-50 text-red-600 border-red-100' : 'bg-green-50 text-green-600 border-green-100'
+              }`}>
+                {isShortage ? 'Shortage' : 'On Track'}
+              </span>
+            </div>
 
-              <div className="flex items-center justify-center my-6 relative">
-                <svg className="w-36 h-36 transform -rotate-90">
-                  <circle cx="72" cy="72" r="54" className="stroke-slate-100 fill-none" strokeWidth="12" />
-                  <circle 
-                    cx="72" 
-                    cy="72" 
-                    r="54" 
-                    className={`fill-none transition-all duration-1000 ${
-                      isShortage ? 'stroke-red-500' : 'stroke-green-500'
-                    }`} 
-                    strokeWidth="12"
-                    strokeDasharray={strokeDash}
-                    strokeDashoffset={strokeOffset}
-                    strokeLinecap="round"
-                  />
-                </svg>
-                <div className="absolute inset-0 flex flex-col items-center justify-center">
-                  <span className="text-3xl font-extrabold text-slate-800">{attendance.overallPercentage || 0}%</span>
-                  <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">Attendance</span>
-                </div>
-              </div>
-
-              <div className="flex justify-around border-t border-slate-100 pt-4 text-center">
-                <div>
-                  <span className="block text-lg font-extrabold text-slate-800">{attendance.attended || 0}</span>
-                  <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Attended</span>
-                </div>
-                <div className="border-r border-slate-100 my-1"></div>
-                <div>
-                  <span className="block text-lg font-extrabold text-slate-800">{attendance.held || 0}</span>
-                  <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Total Held</span>
-                </div>
+            <div className="flex items-center justify-center my-4 relative">
+              <svg className="w-28 h-28 transform -rotate-90">
+                <circle cx="56" cy="56" r="46" className="stroke-slate-100 fill-none" strokeWidth="7" />
+                <circle 
+                  cx="56" 
+                  cy="56" 
+                  r="46" 
+                  className={`fill-none transition-all duration-1000 ${
+                    isShortage ? 'stroke-red-500' : 'stroke-green-600'
+                  }`} 
+                  strokeWidth="7"
+                  strokeDasharray={2 * Math.PI * 46}
+                  strokeDashoffset={2 * Math.PI * 46 - (2 * Math.PI * 46 * overallPercentage) / 100}
+                  strokeLinecap="round"
+                />
+              </svg>
+              <div className="absolute inset-0 flex flex-col items-center justify-center">
+                <span className="text-xl font-extrabold text-slate-800 tracking-tight">{overallPercentage.toFixed(2)}%</span>
+                <span className="text-[8px] text-slate-400 font-extrabold uppercase tracking-wider mt-0.5">Average</span>
               </div>
             </div>
 
-            {/* SGPA Summary Card */}
-            <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm flex flex-col justify-between">
+            <div className="w-full flex justify-around border-t border-slate-100 pt-3 text-center">
               <div>
-                <h3 className="font-extrabold text-slate-800">Academic Standing</h3>
-                <p className="text-slate-400 text-xs mt-0.5">Average Semester SGPA History</p>
+                <span className="block text-xs font-extrabold text-slate-800">{liveAttendance.attended}</span>
+                <span className="text-[8px] text-slate-400 font-bold uppercase tracking-wider">Attended</span>
               </div>
-
-              <div className="my-6 flex items-center justify-between bg-slate-50 border border-slate-100 rounded-2xl p-5">
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 bg-blue-100/50 rounded-2xl flex items-center justify-center text-blue-600">
-                    <Award size={24} />
-                  </div>
-                  <div>
-                    <span className="text-xs text-slate-400 font-bold uppercase tracking-wider block">Latest SGPA</span>
-                    <span className="text-2xl font-extrabold text-slate-800">
-                      {marks.length > 0 ? (marks[marks.length - 1].sgpa || '0.00') : 'N/A'}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="text-right">
-                  <span className="text-xs text-slate-400 font-bold uppercase tracking-wider block">Total Semesters</span>
-                  <span className="text-xl font-extrabold text-slate-700">{marks.length}</span>
-                </div>
-              </div>
-
-              <div className="border-t border-slate-100 pt-4 flex items-center justify-between text-xs text-slate-500">
-                <span className="flex items-center gap-1"><Info size={14} className="text-slate-400" /> Subject Grades and Credits Synced</span>
-                <span className="font-bold text-slate-700">CGPA: {marks.length > 0 ? (marks.reduce((acc, cur) => acc + (cur.sgpa || 0), 0) / marks.length).toFixed(2) : 'N/A'}</span>
-              </div>
-            </div>
-
-            {/* Quick Status / Quick Actions */}
-            <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm flex flex-col justify-between">
+              <div className="border-r border-slate-100 my-1"></div>
               <div>
-                <h3 className="font-extrabold text-slate-800">Security Credentials</h3>
-                <p className="text-slate-400 text-xs mt-0.5">University integration status</p>
+                <span className="block text-xs font-extrabold text-slate-800">{liveAttendance.held}</span>
+                <span className="text-[8px] text-slate-400 font-bold uppercase tracking-wider">Held</span>
               </div>
-
-              <div className="my-5 space-y-3.5">
-                <div className="flex items-center justify-between p-3.5 bg-green-50/50 border border-green-100 rounded-xl">
-                  <div className="flex items-center gap-2.5">
-                    <UserCheck className="w-5 h-5 text-green-600" />
-                    <div>
-                      <span className="text-xs font-bold text-green-800 block">JNTU Portal Status</span>
-                      <span className="text-[10px] text-green-600 font-medium">Link Authed & Verified</span>
-                    </div>
-                  </div>
-                  <span className="w-2.5 h-2.5 bg-green-500 rounded-full animate-ping"></span>
-                </div>
-
-                <div className="text-xs text-slate-500 leading-relaxed bg-slate-50 border border-slate-100 rounded-xl p-3.5">
-                  Your university dashboard updates in real-time on key exam publishes. You can disconnect or revoke access at any time in Profile Settings.
-                </div>
+              <div className="border-r border-slate-100 my-1"></div>
+              <div>
+                <span className="block text-xs font-extrabold text-slate-800">{liveAttendance.held - liveAttendance.attended}</span>
+                <span className="text-[8px] text-slate-400 font-bold uppercase tracking-wider">Missed</span>
               </div>
-
-              <button
-                onClick={() => setActiveTab('attendance')}
-                className="w-full py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-sm rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-              >
-                <span>View Attendance Logs</span>
-                <ChevronRight size={16} />
-              </button>
             </div>
 
-            {/* Interactive SGPA History Chart */}
-            <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm lg:col-span-3">
-              <h3 className="font-extrabold text-slate-800 mb-6 flex items-center gap-2">
-                <TrendingUp size={18} className="text-blue-600" />
-                <span>Semester Performance Trend</span>
-              </h3>
-
-              {marks.length === 0 ? (
-                <div className="h-48 flex items-center justify-center text-slate-400 text-sm">
-                  No academic semesters synced yet.
+            {/* Compact Subject Snapshot List */}
+            <div className="w-full border-t border-slate-100 pt-3 mt-3 text-left">
+              <div className="flex justify-between items-center mb-2.5">
+                <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">
+                  Subject Attendance
+                </span>
+                <div className="flex items-center gap-2">
+                  <select 
+                    value={snapshotSort} 
+                    onChange={(e) => setSnapshotSort(e.target.value)}
+                    className="text-[9px] font-extrabold text-blue-600 bg-transparent hover:text-blue-700 outline-none uppercase tracking-wider cursor-pointer border-none p-0"
+                  >
+                    <option value="default">Default</option>
+                    <option value="name">Name</option>
+                    <option value="high">High %</option>
+                    <option value="low">Low %</option>
+                  </select>
+                  <span className="text-slate-350 text-[9px] font-bold">|</span>
+                  <button 
+                    onClick={() => setIsSnapshotExpanded(!isSnapshotExpanded)}
+                    className="lg:hidden text-[9px] font-extrabold text-blue-600 hover:text-blue-700 transition-colors uppercase tracking-wider cursor-pointer"
+                  >
+                    {isSnapshotExpanded ? 'Collapse' : 'Expand'}
+                  </button>
                 </div>
-              ) : (
-                <div className="relative">
-                  {/* Custom interactive SVG Line Chart */}
-                  <svg viewBox="0 0 800 240" className="w-full h-auto">
-                    {/* Grids */}
-                    <line x1="60" y1="40" x2="740" y2="40" stroke="#f1f5f9" strokeWidth="1.5" />
-                    <line x1="60" y1="90" x2="740" y2="90" stroke="#f1f5f9" strokeWidth="1.5" />
-                    <line x1="60" y1="140" x2="740" y2="140" stroke="#f1f5f9" strokeWidth="1.5" />
-                    <line x1="60" y1="190" x2="740" y2="190" stroke="#f1f5f9" strokeWidth="1.5" />
-
-                    {/* Chart labels */}
-                    <text x="35" y="44" className="text-[10px] font-bold fill-slate-400 text-right">10.0</text>
-                    <text x="35" y="94" className="text-[10px] font-bold fill-slate-400 text-right">8.0</text>
-                    <text x="35" y="144" className="text-[10px] font-bold fill-slate-400 text-right">6.0</text>
-                    <text x="35" y="194" className="text-[10px] font-bold fill-slate-400 text-right">4.0</text>
-
-                    {/* Draw SVG Line & Area Path dynamically */}
-                    {(() => {
-                      const stepX = marks.length > 1 ? (680 / (marks.length - 1)) : 680;
-                      const points = marks.map((item, idx) => {
-                        const x = 60 + idx * stepX;
-                        // Map SGPA (4.0 to 10.0) to Y coordinates (190 to 40)
-                        const sgpa = Math.max(4.0, Math.min(10.0, item.sgpa || 0));
-                        const y = 190 - ((sgpa - 4.0) / 6.0) * 150;
-                        return { x, y, sgpa: item.sgpa, label: item.term || item.semesterLabel || `Sem ${idx+1}` };
-                      });
-
-                      const linePath = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
-                      const areaPath = points.length > 0 
-                        ? `${linePath} L ${points[points.length - 1].x} 190 L ${points[0].x} 190 Z`
-                        : '';
-
-                      return (
-                        <>
-                          {/* Shaded Area */}
-                          {areaPath && <path d={areaPath} fill="url(#sgpa-grad)" className="opacity-10" />}
-                          
-                          {/* Smooth Line */}
-                          {linePath && <path d={linePath} fill="none" stroke="#2563eb" strokeWidth="3" strokeLinecap="round" />}
-
-                          {/* Data points */}
-                          {points.map((p, i) => (
-                            <g key={i} className="group/dot cursor-pointer">
-                              <circle 
-                                cx={p.x} 
-                                cy={p.y} 
-                                r="6" 
-                                fill="#2563eb" 
-                                className="stroke-white stroke-[2.5px] transition-all group-hover/dot:r-8 group-hover/dot:stroke-[3.5px]" 
-                              />
-                              
-                              {/* Labels */}
-                              <text x={p.x} y="215" textAnchor="middle" className="text-[10px] font-bold fill-slate-500">
-                                {p.label}
-                              </text>
-
-                              {/* Value labels */}
-                              <text x={p.x} y={p.y - 12} textAnchor="middle" className="text-[10px] font-bold fill-blue-600 bg-white opacity-0 group-hover/dot:opacity-100 transition-opacity">
-                                {p.sgpa?.toFixed(2)}
-                              </text>
-                            </g>
-                          ))}
-                        </>
-                      );
-                    })()}
-
-                    {/* Gradient Definitions */}
-                    <defs>
-                      <linearGradient id="sgpa-grad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#2563eb" />
-                        <stop offset="100%" stopColor="#2563eb" stopOpacity="0" />
-                      </linearGradient>
-                    </defs>
-                  </svg>
+              </div>
+              
+              <div className={`space-y-4 max-h-[190px] overflow-y-auto scrollbar-none pr-0.5 ${
+                isSnapshotExpanded ? 'max-h-[320px]' : ''
+              }`}>
+                {(() => {
+                  const sorted = [...liveAttendance.subjects];
+                  if (snapshotSort === 'name') {
+                    sorted.sort((a, b) => a.name.localeCompare(b.name));
+                  } else if (snapshotSort === 'high') {
+                    sorted.sort((a, b) => b.percentage - a.percentage);
+                  } else if (snapshotSort === 'low') {
+                    sorted.sort((a, b) => a.percentage - b.percentage);
+                  }
                   
-                  <div className="flex gap-4 text-xs text-slate-400 font-semibold justify-center mt-3">
-                    <span className="flex items-center gap-1"><span className="w-3 h-3 bg-blue-600 rounded-full"></span> SGPA Trend</span>
-                    <span className="text-[10px] uppercase font-bold text-slate-400">Hover dots to view semester scores</span>
-                  </div>
-                </div>
+                  return sorted.map((sub, idx) => {
+                    const { barColorClass, dotColorClass } = getProgressBarStyles(sub.percentage);
+                    return (
+                      <div 
+                        key={idx} 
+                        className={`space-y-1.5 transition-all duration-300 ${
+                          idx >= 4 && !isSnapshotExpanded ? 'hidden lg:block' : 'block'
+                        }`}
+                      >
+                        <div className="flex justify-between items-center font-bold text-slate-700 text-[10px]">
+                          <div className="flex items-center gap-1.5 truncate">
+                            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotColorClass}`}></span>
+                            <span className="truncate">{sub.name}</span>
+                          </div>
+                          <span className="text-slate-500 font-bold shrink-0 ml-2">
+                            {sub.attended} / {sub.held} ({sub.percentage}%)
+                          </span>
+                        </div>
+                        
+                        <div className="w-full h-1 bg-slate-100 rounded-full overflow-hidden">
+                          <div 
+                            className={`h-full rounded-full transition-all duration-500 ${barColorClass}`}
+                            style={{ width: `${sub.percentage}%` }}
+                          ></div>
+                        </div>
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+            </div>            <div className="w-full text-center mt-2.5 pt-2 border-t border-slate-100 text-[8px] text-slate-400 font-bold">
+              Last Synced: {data?.lastSuccessAt ? new Date(data.lastSuccessAt).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' }) : 'N/A'}
+            </div>
+          </div>
+
+          {/* Card 3: Semester SPF Band */}
+          <div className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm space-y-3 relative overflow-hidden">
+            <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Semester SPF Band</span>
+            
+            <div className="flex justify-between items-center">
+              <div>
+                <span className="text-xl font-extrabold text-slate-800">Band {semesterSpfBand}</span>
+                <span className="text-[10px] font-extrabold text-slate-400 block mt-0.5">({formatShortSem(selectedSem)})</span>
+              </div>
+              
+              <div className="text-right border-l border-slate-100 pl-4">
+                <span className="block text-[8px] text-slate-400 font-extrabold uppercase tracking-wider">Latest Cycle</span>
+                <span className={`inline-block px-2.5 py-0.5 rounded font-extrabold text-[9px] mt-1 border ${
+                  latestSpf?.band === 'A' ? 'bg-green-50 text-green-600 border-green-100' : 'bg-blue-50 text-blue-600 border-blue-100'
+                }`}>
+                  Cycle {latestSpf?.cycle || '1'}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Card 4: Horizontal SPF Progression Journey */}
+          <div className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm space-y-2 relative overflow-hidden">
+            <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">SPF Journey</span>
+            
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin">
+              {spfBands.length === 0 ? (
+                <span className="text-slate-400 text-[10px] font-bold py-1">No progression found</span>
+              ) : (
+                spfBands.map((b, idx) => {
+                  const isA = b.band === 'A';
+                  const isB = b.band === 'B';
+                  const isC = b.band === 'C';
+                  const bandColor = isA ? 'bg-green-50 text-green-600 border-green-100' :
+                                    isB ? 'bg-blue-50 text-blue-600 border-blue-100' :
+                                    isC ? 'bg-amber-50 text-amber-600 border-amber-100' :
+                                    'bg-red-50 text-red-600 border-red-100';
+                  
+                  return (
+                    <div key={idx} className="flex items-center shrink-0">
+                      <div className="flex flex-col items-center text-center p-1.5 bg-slate-50 border border-slate-100 rounded-lg min-w-[64px]">
+                        <span className="text-[8px] font-bold text-slate-700">{formatShortSem(b.semesterLabel)}</span>
+                        <span className="text-[7px] text-slate-400 font-bold mt-0.5">Cycle {b.cycle}</span>
+                        <span className={`px-1 py-0.5 rounded font-extrabold text-[8px] mt-1 border ${bandColor}`}>
+                          Band {b.band}
+                        </span>
+                      </div>
+                      {idx < spfBands.length - 1 && (
+                        <div className="flex items-center justify-center text-slate-300 font-extrabold ml-2">
+                          →
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
               )}
             </div>
           </div>
-        )}
 
-        {/* Tab: Attendance details */}
-        {activeTab === 'attendance' && (
-          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-6">
-            <div className="flex justify-between items-center">
+        </div>
+
+        {/* RIGHT COLUMN: Semester Workspace (65% width) */}
+        <div className={`md:col-span-6 lg:col-span-8 space-y-4 transition-opacity duration-200 ${isFading ? 'opacity-0' : 'opacity-100'}`}>
+          
+          {/* Semester Results header */}
+          <div className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm space-y-3">
+            <span className="text-[10px] font-extrabold text-blue-600 uppercase tracking-wider block">Academic Dashboard</span>
+            
+            <div className="grid grid-cols-4 gap-4 pt-1">
               <div>
-                <h3 className="text-lg font-extrabold text-slate-800">Subject Attendance Registry</h3>
-                <p className="text-slate-400 text-sm mt-0.5">Semester subject-wise class tracking log</p>
+                <span className="block text-[8px] text-slate-400 font-extrabold uppercase tracking-wider">Viewing Results</span>
+                <span className="block text-sm font-extrabold text-slate-800 mt-1">{formatShortSem(selectedSem)}</span>
               </div>
-              <div className="text-right">
-                <span className="text-2xl font-extrabold text-slate-800">{attendance.overallPercentage}%</span>
-                <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider">Overall Average</span>
+              
+              <div className="border-l border-slate-100 pl-4">
+                <span className="block text-[8px] text-slate-400 font-extrabold uppercase tracking-wider">Overall CGPA</span>
+                <span className="block text-sm font-extrabold text-slate-800 mt-1">{overallCgpa}</span>
+              </div>
+              
+              <div className="border-l border-slate-100 pl-4">
+                <span className="block text-[8px] text-slate-400 font-extrabold uppercase tracking-wider">Semester SGPA</span>
+                <span className="block text-sm font-extrabold text-slate-800 mt-1">{semesterSgpa}</span>
+              </div>
+              
+              <div className="border-l border-slate-100 pl-4">
+                <span className="block text-[8px] text-slate-400 font-extrabold uppercase tracking-wider">SPF Band</span>
+                <span className="block text-sm font-extrabold text-slate-800 mt-1">Band {semesterSpfBand}</span>
               </div>
             </div>
+          </div>
 
-            <div className="border border-slate-100 rounded-2xl overflow-hidden">
-              <table className="w-full text-left border-collapse">
+          {/* Consolidated Evaluations Table (CIE-1, CIE-2, Assignment, Total in one view) */}
+          <div className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm space-y-3">
+            <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Internal Evaluations Summary</span>
+
+            <div className="border border-slate-100 rounded-xl overflow-hidden shadow-sm">
+              <table className="w-full text-left border-collapse text-xs">
                 <thead>
-                  <tr className="bg-slate-50 border-b border-slate-100 text-xs font-bold text-slate-500 uppercase tracking-wider">
-                    <th className="py-4 px-6">Subject / Course Name</th>
-                    <th className="py-4 px-6 text-center">Classes Attended</th>
-                    <th className="py-4 px-6 text-center">Classes Held</th>
-                    <th className="py-4 px-6">Percentage Progress</th>
-                    <th className="py-4 px-6 text-right">Status</th>
+                  <tr className="bg-slate-50/50 border-b border-slate-100 font-bold text-slate-400 uppercase tracking-wider">
+                    <th className="py-2 px-3 font-bold">Subject</th>
+                    <th className="py-2 px-3 text-center font-bold">CIE-1 <span className="text-[8px] font-normal lowercase">(35)</span></th>
+                    <th className="py-2 px-3 text-center font-bold">CIE-2 <span className="text-[8px] font-normal lowercase">(35)</span></th>
+                    <th className="py-2 px-3 text-center font-bold">Assignment <span className="text-[8px] font-normal lowercase">(10)</span></th>
+                    <th className="py-2 px-3 text-center font-bold">Total <span className="text-[8px] font-normal lowercase">(80)</span></th>
+                    <th className="py-2 px-3 text-right font-bold">Status</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {attendance.subjects?.length === 0 ? (
+                <tbody className="divide-y divide-slate-100 font-medium text-slate-600">
+                  {internalMarksData.length === 0 ? (
                     <tr>
-                      <td colSpan="5" className="py-8 text-center text-slate-400 text-sm">
-                        No subject logs parsed yet.
+                      <td colSpan="6" className="py-6 text-center text-slate-400 font-medium">
+                        No marks available for this semester.
                       </td>
                     </tr>
                   ) : (
-                    attendance.subjects?.map((sub, idx) => {
+                    internalMarksData.map((row, idx) => (
+                      <tr key={idx} className="hover:bg-slate-50/20 border-b border-slate-50 transition-colors">
+                        <td className="py-1.5 px-3 font-bold text-slate-800 text-xs">{row.subject}</td>
+                        <td className="py-1.5 px-3 text-center font-bold text-slate-700">{row.cie1}</td>
+                        <td className="py-1.5 px-3 text-center font-bold text-slate-700">{row.cie2}</td>
+                        <td className="py-1.5 px-3 text-center font-bold text-slate-700">{row.assignment}</td>
+                        <td className="py-1.5 px-3 text-center font-extrabold text-blue-600">{row.total}</td>
+                        <td className="py-1.5 px-3 text-right">
+                          <span className={`inline-block px-2 py-0.5 text-[8px] font-extrabold uppercase rounded border ${row.statusColor}`}>
+                            {row.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Attendance Registry Table Card (Static Current Semester Registry) */}
+          <div className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm space-y-3">
+            <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">
+              Subject Attendance Registry ({formatShortSem(currentSem)})
+            </span>
+            
+            <div className="border border-slate-100 rounded-xl overflow-hidden max-h-[250px] overflow-y-auto shadow-sm">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead className="sticky top-0 bg-white z-10">
+                  <tr className="bg-slate-50 border-b border-slate-100 font-bold text-slate-400 uppercase tracking-wider">
+                    <th className="py-2 px-3 font-bold">Subject</th>
+                    <th className="py-2 px-3 text-center font-bold">Attended</th>
+                    <th className="py-2 px-3 text-center font-bold">Held</th>
+                    <th className="py-2 px-3 font-bold">%</th>
+                    <th className="py-2 px-3 text-right font-bold">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 font-medium text-slate-600">
+                  {liveAttendance.subjects.length === 0 ? (
+                    <tr>
+                      <td colSpan="5" className="py-6 text-center text-slate-400 font-medium">
+                        No subject logs parsed.
+                      </td>
+                    </tr>
+                  ) : (
+                    liveAttendance.subjects.map((sub, idx) => {
+                      const { barColorClass, textColorClass } = getProgressBarStyles(sub.percentage);
                       const shortage = sub.percentage < 75;
+                      const statusText = shortage ? 'Shortage' : 'On Track';
+                      
                       return (
-                        <tr key={idx} className="hover:bg-slate-50/50 transition-colors text-sm font-medium text-slate-700">
-                          <td className="py-4 px-6 font-bold text-slate-800">{sub.name}</td>
-                          <td className="py-4 px-6 text-center">{sub.attended}</td>
-                          <td className="py-4 px-6 text-center">{sub.held}</td>
-                          <td className="py-4 px-6">
-                            <div className="flex items-center gap-3">
-                              <span className="w-10 font-bold text-slate-600 text-xs">{sub.percentage}%</span>
-                              <div className="w-32 h-2 bg-slate-100 rounded-full overflow-hidden shrink-0">
+                        <tr key={idx} className="hover:bg-slate-50/20 border-b border-slate-50 transition-colors">
+                          <td className="py-1.5 px-3 font-bold text-slate-800 text-xs">{sub.name}</td>
+                          <td className="py-1.5 px-3 text-center font-bold text-slate-700">{sub.attended}</td>
+                          <td className="py-1.5 px-3 text-center text-slate-500">{sub.held}</td>
+                          <td className="py-1.5 px-3">
+                            <div className="flex flex-col gap-1 min-w-[110px] py-0.5 justify-center">
+                              <span className="font-extrabold text-slate-700 text-[10px] leading-none">{sub.percentage}%</span>
+                              <div className="w-28 h-1.5 bg-slate-100 rounded-full overflow-hidden relative">
                                 <div 
-                                  className={`h-full rounded-full ${shortage ? 'bg-red-500' : 'bg-green-500'}`} 
+                                  className={`h-full rounded-full transition-all duration-500 ${barColorClass}`} 
                                   style={{ width: `${sub.percentage}%` }}
                                 ></div>
                               </div>
                             </div>
                           </td>
-                          <td className="py-4 px-6 text-right">
-                            <span className={`text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full ${
-                              shortage ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'
-                            }`}>
-                              {shortage ? 'Shortage' : 'On Track'}
+                          <td className="py-1.5 px-3 text-right">
+                            <span className={`inline-block px-2 py-0.5 text-[8px] font-extrabold uppercase rounded border ${textColorClass}`}>
+                              {statusText}
                             </span>
                           </td>
                         </tr>
@@ -639,57 +950,9 @@ export default function AcademicModule({ user }) {
               </table>
             </div>
           </div>
-        )}
 
-        {/* Tab: Semester Marks */}
-        {activeTab === 'marks' && (
-          <div className="space-y-6">
-            {marks.map((exam, examIdx) => (
-              <div key={examIdx} className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-100 pb-4">
-                  <div>
-                    <span className="text-xs font-bold text-blue-600 uppercase tracking-wider">{exam.examLabel || exam.examId}</span>
-                    <h3 className="text-lg font-extrabold text-slate-800 mt-0.5">{exam.title} — Term {exam.term}</h3>
-                  </div>
-
-                  <div className="flex items-center gap-4 bg-slate-50 border border-slate-100 px-4 py-2 rounded-xl">
-                    <div>
-                      <span className="block text-[9px] text-slate-400 font-bold uppercase tracking-wider">Semester SGPA</span>
-                      <span className="text-lg font-extrabold text-slate-800">{exam.sgpa ? exam.sgpa.toFixed(2) : 'N/A'}</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="border border-slate-100 rounded-2xl overflow-hidden">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="bg-slate-50 border-b border-slate-100 text-xs font-bold text-slate-500 uppercase tracking-wider">
-                        <th className="py-4 px-6">Subject / Course Name</th>
-                        <th className="py-4 px-6 text-center">Grade Secured</th>
-                        <th className="py-4 px-6 text-right">Academic Credits</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {exam.items?.map((item, itemIdx) => (
-                        <tr key={itemIdx} className="hover:bg-slate-50/50 transition-colors text-sm font-medium text-slate-700">
-                          <td className="py-4 px-6 font-bold text-slate-800">{item.name}</td>
-                          <td className="py-4 px-6 text-center">
-                            <span className={`inline-block w-8 py-0.5 rounded font-extrabold text-xs text-center ${
-                              item.grade === 'F' ? 'bg-red-100 text-red-700' : 'bg-blue-50 text-blue-600 border border-blue-100'
-                            }`}>
-                              {item.grade}
-                            </span>
-                          </td>
-                          <td className="py-4 px-6 text-right font-bold text-slate-600">{item.credits}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+        </div>
+        
       </div>
     </div>
   );
