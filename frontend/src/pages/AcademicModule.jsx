@@ -12,7 +12,7 @@ const TABS = [
   { id: 'dashboard', label: 'Academic Dashboard', icon: BookOpen, active: true },
   { id: 'attendance', label: 'Attendance Details', icon: BookMarked, active: true },
   { id: 'marks', label: 'Semester Grades', icon: Award, active: true },
-  { id: 'spf', label: 'SPF Band Analyzer', icon: TrendingUp, active: false, badge: 'Soon' },
+  { id: 'spf', label: 'SPF Band Analyzer', icon: TrendingUp, active: true },
   { id: 'timetable', label: 'Class Timetable', icon: Calendar, active: false, badge: 'Soon' }
 ];
 
@@ -108,13 +108,12 @@ export default function AcademicModule({ user }) {
     setIsRefreshing(true);
     try {
       await refreshERP();
-      // Start polling for background sync task
-      fetchSummary(false);
+      await fetchSummary(false);
     } catch (err) {
       console.error(err);
-      alert('Unable to schedule refresh. Please try again later.');
+      alert('Unable to refresh academic records. Please try again later.');
     } finally {
-      setTimeout(() => setIsRefreshing(false), 2000);
+      setIsRefreshing(false);
     }
   };
 
@@ -688,6 +687,113 @@ export default function AcademicModule({ user }) {
                 </div>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Tab: SPF Band Analyzer */}
+        {activeTab === 'spf' && (
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-6">
+            <div>
+              <h3 className="text-lg font-extrabold text-slate-800">SPF Band Analyzer</h3>
+              <p className="text-slate-400 text-sm mt-0.5">Historical academic performance categories and cycle progress tracking</p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Band Explainer */}
+              <div className="bg-slate-50 border border-slate-100 rounded-2xl p-5 space-y-4">
+                <h4 className="font-bold text-slate-700 text-sm">Understanding SPF Bands</h4>
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3">
+                    <span className="w-8 py-0.5 bg-green-100 text-green-700 font-extrabold text-xs text-center rounded">A</span>
+                    <span className="text-xs text-slate-600 font-medium">Outstanding performance (Typically SGPA &ge; 8.0)</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="w-8 py-0.5 bg-blue-100 text-blue-700 font-extrabold text-xs text-center rounded">B</span>
+                    <span className="text-xs text-slate-600 font-medium">Good / Consistent performance (Typically SGPA 7.0 - 7.9)</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="w-8 py-0.5 bg-amber-100 text-amber-700 font-extrabold text-xs text-center rounded">C</span>
+                    <span className="text-xs text-slate-600 font-medium">Average performance (Typically SGPA 6.0 - 6.9)</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="w-8 py-0.5 bg-red-100 text-red-700 font-extrabold text-xs text-center rounded">D</span>
+                    <span className="text-xs text-slate-600 font-medium">Critical performance / Need improvement (SGPA &lt; 6.0)</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Band Summary Stats */}
+              <div className="bg-blue-50/50 border border-blue-100/50 rounded-2xl p-5 flex flex-col justify-between">
+                <div>
+                  <h4 className="font-bold text-blue-800 text-sm flex items-center gap-1.5">
+                    <Sparkles size={16} className="text-blue-600 animate-pulse" />
+                    Latest Academic Band Status
+                  </h4>
+                  <p className="text-xs text-blue-700/80 mt-1 leading-relaxed">
+                    Based on your parsed ERP performance cycles, the placement team uses these bands to filter profiles for internship and campus recruitment drives.
+                  </p>
+                </div>
+                
+                <div className="flex justify-between items-center mt-4 pt-4 border-t border-blue-100/30">
+                  <span className="text-xs font-bold text-slate-500">Latest Active Band</span>
+                  <span className={`px-4 py-1 rounded-xl text-sm font-extrabold shadow-sm ${
+                    academicData.spfBands?.length > 0 && academicData.spfBands[academicData.spfBands.length - 1].band === 'A'
+                      ? 'bg-green-500 text-white'
+                      : 'bg-blue-600 text-white'
+                  }`}>
+                    Band {academicData.spfBands?.length > 0 ? academicData.spfBands[academicData.spfBands.length - 1].band : 'N/A'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Table of bands */}
+            <div className="border border-slate-100 rounded-2xl overflow-hidden">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-100 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                    <th className="py-4 px-6">Semester Label</th>
+                    <th className="py-4 px-6 text-center">Cycle Number</th>
+                    <th className="py-4 px-6 text-center">Assigned Band</th>
+                    <th className="py-4 px-6 text-right">Synchronization Timestamp</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {academicData.spfBands?.length === 0 ? (
+                    <tr>
+                      <td colSpan="4" className="py-8 text-center text-slate-400 text-sm">
+                        No SPF Band metrics generated yet.
+                      </td>
+                    </tr>
+                  ) : (
+                    academicData.spfBands?.map((b, idx) => {
+                      const isA = b.band === 'A';
+                      const isB = b.band === 'B';
+                      const isC = b.band === 'C';
+                      return (
+                        <tr key={idx} className="hover:bg-slate-50/50 transition-colors text-sm font-medium text-slate-700">
+                          <td className="py-4 px-6 font-bold text-slate-800">{b.semesterLabel}</td>
+                          <td className="py-4 px-6 text-center">Cycle {b.cycle}</td>
+                          <td className="py-4 px-6 text-center">
+                            <span className={`inline-block w-12 py-1 rounded font-extrabold text-xs text-center ${
+                              isA ? 'bg-green-100 text-green-700 border border-green-200' :
+                              isB ? 'bg-blue-100 text-blue-700 border border-blue-200' :
+                              isC ? 'bg-amber-100 text-amber-700 border border-amber-200' :
+                              'bg-red-100 text-red-700 border border-red-200'
+                            }`}>
+                              Band {b.band}
+                            </span>
+                          </td>
+                          <td className="py-4 px-6 text-right text-xs text-slate-400 font-bold">
+                            {b.scrapedAt ? new Date(b.scrapedAt).toLocaleString() : 'N/A'}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </div>
