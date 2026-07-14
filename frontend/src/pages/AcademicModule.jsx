@@ -643,50 +643,67 @@ export default function AcademicModule({ user }) {
         {/* Tab: Semester Marks */}
         {activeTab === 'marks' && (
           <div className="space-y-6">
-            {marks.map((exam, examIdx) => (
-              <div key={examIdx} className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-100 pb-4">
-                  <div>
-                    <span className="text-xs font-bold text-blue-600 uppercase tracking-wider">{exam.examLabel || exam.examId}</span>
-                    <h3 className="text-lg font-extrabold text-slate-800 mt-0.5">{exam.title} — Term {exam.term}</h3>
-                  </div>
-
-                  <div className="flex items-center gap-4 bg-slate-50 border border-slate-100 px-4 py-2 rounded-xl">
+            {marks.map((exam, examIdx) => {
+              const isInternal = exam.examId?.startsWith('INTERNAL');
+              return (
+                <div key={examIdx} className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
+                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-100 pb-4">
                     <div>
-                      <span className="block text-[9px] text-slate-400 font-bold uppercase tracking-wider">Semester SGPA</span>
-                      <span className="text-lg font-extrabold text-slate-800">{exam.sgpa ? exam.sgpa.toFixed(2) : 'N/A'}</span>
+                      <span className="text-xs font-bold text-blue-600 uppercase tracking-wider">{exam.examLabel || exam.examId}</span>
+                      <h3 className="text-lg font-extrabold text-slate-800 mt-0.5">{exam.title} — Term {exam.term}</h3>
                     </div>
+
+                    {!isInternal && (
+                      <div className="flex items-center gap-4 bg-slate-50 border border-slate-100 px-4 py-2 rounded-xl">
+                        <div>
+                          <span className="block text-[9px] text-slate-400 font-bold uppercase tracking-wider">Semester SGPA</span>
+                          <span className="text-lg font-extrabold text-slate-800">{exam.sgpa ? exam.sgpa.toFixed(2) : 'N/A'}</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="border border-slate-100 rounded-2xl overflow-hidden">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="bg-slate-50 border-b border-slate-100 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                          <th className="py-4 px-6">Subject / Course Name</th>
+                          {isInternal ? (
+                            <th className="py-4 px-6 text-right">Marks Scored</th>
+                          ) : (
+                            <>
+                              <th className="py-4 px-6 text-center">Grade Secured</th>
+                              <th className="py-4 px-6 text-right">Academic Credits</th>
+                            </>
+                          )}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {exam.items?.map((item, itemIdx) => (
+                          <tr key={itemIdx} className="hover:bg-slate-50/50 transition-colors text-sm font-medium text-slate-700">
+                            <td className="py-4 px-6 font-bold text-slate-800">{item.name}</td>
+                            {isInternal ? (
+                              <td className="py-4 px-6 text-right font-extrabold text-slate-800">{item.scored || 'N/A'}</td>
+                            ) : (
+                              <>
+                                <td className="py-4 px-6 text-center">
+                                  <span className={`inline-block w-8 py-0.5 rounded font-extrabold text-xs text-center ${
+                                    item.grade === 'F' ? 'bg-red-100 text-red-700' : 'bg-blue-50 text-blue-600 border border-blue-100'
+                                  }`}>
+                                    {item.grade || 'N/A'}
+                                  </span>
+                                </td>
+                                <td className="py-4 px-6 text-right font-bold text-slate-600">{item.credits || '0'}</td>
+                              </>
+                            )}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 </div>
-
-                <div className="border border-slate-100 rounded-2xl overflow-hidden">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="bg-slate-50 border-b border-slate-100 text-xs font-bold text-slate-500 uppercase tracking-wider">
-                        <th className="py-4 px-6">Subject / Course Name</th>
-                        <th className="py-4 px-6 text-center">Grade Secured</th>
-                        <th className="py-4 px-6 text-right">Academic Credits</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {exam.items?.map((item, itemIdx) => (
-                        <tr key={itemIdx} className="hover:bg-slate-50/50 transition-colors text-sm font-medium text-slate-700">
-                          <td className="py-4 px-6 font-bold text-slate-800">{item.name}</td>
-                          <td className="py-4 px-6 text-center">
-                            <span className={`inline-block w-8 py-0.5 rounded font-extrabold text-xs text-center ${
-                              item.grade === 'F' ? 'bg-red-100 text-red-700' : 'bg-blue-50 text-blue-600 border border-blue-100'
-                            }`}>
-                              {item.grade}
-                            </span>
-                          </td>
-                          <td className="py-4 px-6 text-right font-bold text-slate-600">{item.credits}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
