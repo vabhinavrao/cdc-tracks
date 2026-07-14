@@ -38,6 +38,7 @@ class Student(Base):
     branch = Column(String, nullable=True)
     program = Column(String, nullable=True, default="B.Tech")
     regulation = Column(String, nullable=True)
+    current_semester = Column(String, nullable=True)
     cgpa = Column(Numeric(4, 2), nullable=True)
     cgpa_credits = Column(String, nullable=True)
     cgpa_percentage = Column(Numeric(5, 2), nullable=True)
@@ -60,6 +61,7 @@ class Attendance(Base):
     __tablename__ = "attendance"
     
     roll_number = Column(String, ForeignKey("students.roll_number", ondelete="CASCADE"), primary_key=True)
+    semester_label = Column(String, nullable=True)
     overall_percentage = Column(Numeric(5, 2), nullable=True)
     held = Column(Integer, nullable=True)
     attended = Column(Integer, nullable=True)

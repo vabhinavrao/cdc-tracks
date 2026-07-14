@@ -121,6 +121,7 @@ async def scrape_and_persist(
             branch=academic_payload.profile.branch,
             program=academic_payload.profile.program,
             regulation=None,
+            current_semester=academic_payload.profile.currentTermId,
             cgpa=academic_payload.profile.cgpa,
             cgpa_credits=academic_payload.profile.cgpaCredits,
             cgpa_percentage=academic_payload.profile.cgpaPercentage,
@@ -134,6 +135,7 @@ async def scrape_and_persist(
                 "branch": academic_payload.profile.branch,
                 "program": academic_payload.profile.program,
                 "regulation": None,
+                "current_semester": academic_payload.profile.currentTermId,
                 "cgpa": academic_payload.profile.cgpa,
                 "cgpa_credits": academic_payload.profile.cgpaCredits,
                 "cgpa_percentage": academic_payload.profile.cgpaPercentage,
@@ -146,6 +148,7 @@ async def scrape_and_persist(
         # 2. Upsert Attendance Cache snapshot
         stmt_att = insert(models.Attendance).values(
             roll_number=roll_number,
+            semester_label=academic_payload.profile.currentTermId,
             overall_percentage=academic_payload.attendance.overallPercentage,
             held=academic_payload.attendance.held,
             attended=academic_payload.attendance.attended,
@@ -156,6 +159,7 @@ async def scrape_and_persist(
         ).on_conflict_do_update(
             constraint="attendance_pkey",
             set_={
+                "semester_label": academic_payload.profile.currentTermId,
                 "overall_percentage": academic_payload.attendance.overallPercentage,
                 "held": academic_payload.attendance.held,
                 "attended": academic_payload.attendance.attended,
@@ -279,12 +283,24 @@ async def get_academic_summary(
                 })
                 
         data_payload = {
+            "student": {
+                "rollNumber": student.roll_number,
+                "name": student.name,
+                "branch": student.branch,
+                "program": student.program,
+                "currentSemester": student.current_semester,
+                "cgpa": float(student.cgpa) if student.cgpa else None,
+                "cgpaCredits": student.cgpa_credits,
+                "cgpaPercentage": float(student.cgpa_percentage) if student.cgpa_percentage else None,
+            },
             "attendance": {
                 "overallPercentage": float(attendance.overall_percentage) if attendance.overall_percentage else 0.0,
                 "held": attendance.held or 0,
                 "attended": attendance.attended or 0,
+                "semesterLabel": attendance.semester_label,
                 "scrapedAt": attendance.last_scraped_at.isoformat(),
-                "subjects": attendance.subjects
+                "subjects": attendance.subjects,
+                "previous_semesters": attendance.previous_semesters
             },
             "marks": reconstructed_marks,
             "spfBands": reconstructed_spf

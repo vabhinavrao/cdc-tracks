@@ -42,6 +42,65 @@ export default function AcademicModule({ user }) {
     };
   }, []);
 
+  // Adjust active tab state dynamically if current selection is not available (Rules of Hooks safe)
+  useEffect(() => {
+    if (!data?.data) return;
+    const academicDataObj = data.data;
+    const marksList = academicDataObj.marks || [];
+    const attendanceObj = academicDataObj.attendance || {};
+    const spfBandsList = academicDataObj.spfBands || [];
+    
+    // Sort semesters to find current
+    const allSemSet = new Set();
+    if (Array.isArray(attendanceObj.previous_semesters)) {
+      attendanceObj.previous_semesters.forEach(s => {
+        if (s.semesterLabel) allSemSet.add(s.semesterLabel);
+      });
+    }
+    if (attendanceObj.semesterLabel) {
+      allSemSet.add(attendanceObj.semesterLabel);
+    }
+    if (Array.isArray(marksList)) {
+      marksList.forEach(exam => {
+        if (exam.term) allSemSet.add(exam.term);
+      });
+    }
+    if (Array.isArray(spfBandsList)) {
+      spfBandsList.forEach(b => {
+        if (b.semesterLabel) allSemSet.add(b.semesterLabel);
+      });
+    }
+
+    const semsSorted = Array.from(allSemSet).sort((a, b) => {
+      const semA = parseSemester(a);
+      const semB = parseSemester(b);
+      if (semA.year !== semB.year) return semA.year - semB.year;
+      return semA.sem - semB.sem;
+    });
+
+    const currSem = academicDataObj.student?.currentSemester || attendanceObj.semesterLabel || semsSorted[semsSorted.length - 1] || 'III-I';
+    const completedSems = semsSorted.filter(sem => sem !== currSem);
+    const activeSem = selectedSemester || completedSems[completedSems.length - 1] || '';
+
+    if (!activeSem) return;
+
+    const semExams = marksList.filter(exam => exam.term === activeSem);
+    const hasC1 = semExams.some(e => e.title?.includes('CIE-A1') || e.title?.includes('CIE-B1') || e.title?.includes('CIE-C1'));
+    const hasC2 = semExams.some(e => e.title?.includes('CIE-A2') || e.title?.includes('CIE-B2') || e.title?.includes('CIE-C2'));
+    const hasAssign = semExams.some(e => e.title?.includes('CIE-C1') || e.title?.includes('CIE-C2') || e.title?.toLowerCase().includes('assignment'));
+    const hasLb = semExams.some(e => e.examId?.startsWith('INTERNAL') && !e.title?.includes('CIE-A') && !e.title?.includes('CIE-B') && !e.title?.includes('CIE-C'));
+
+    const tabs = [];
+    if (hasC1) tabs.push('cie-1');
+    if (hasC2) tabs.push('cie-2');
+    if (hasAssign) tabs.push('assignment');
+    if (hasLb) tabs.push('lab');
+
+    if (tabs.length > 0 && !tabs.includes(activeInternalTab)) {
+      setActiveInternalTab(tabs[0]);
+    }
+  }, [selectedSemester, data, activeInternalTab]);
+
   const fetchSummary = async (initial = false) => {
     if (initial) setLoading(true);
     try {
@@ -314,7 +373,7 @@ export default function AcademicModule({ user }) {
     const parts = label.split('/');
     const year = parts[0]?.trim() || 'I';
     const sem = label.toLowerCase().includes('ii semester') ? 'II' : 'I';
-    return `${year}-${sem} Sem`;
+    return `${year}-${sem}`;
   };
 
   const normalizeName = (name) => {
@@ -350,40 +409,27 @@ export default function AcademicModule({ user }) {
     return semA.sem - semB.sem;
   });
 
-  const selectedSem = selectedSemester || semestersSorted[semestersSorted.length - 1] || '';
+  // Current Semester Info
+  const currentSem = student.currentSemester || attendance.semesterLabel || semestersSorted[semestersSorted.length - 1] || 'III-I';
 
-  // Get dynamic data for selected semester
-  const getSemesterAttendance = (sem) => {
-    if (!sem) return { overallPercentage: 0, held: 0, attended: 0, subjects: [] };
-    const isCurrent = sem === semestersSorted[semestersSorted.length - 1];
-    
-    if (isCurrent) {
-      return {
-        overallPercentage: parseFloat(attendance.overall_percentage || attendance.overallPercentage) || 0,
-        held: attendance.held || 0,
-        attended: attendance.attended || 0,
-        subjects: attendance.subjects || []
-      };
-    }
-    
-    const prevSem = Array.isArray(attendance.previous_semesters)
-      ? attendance.previous_semesters.find(s => s.semesterLabel === sem)
-      : null;
-      
-    if (prevSem) {
-      return {
-        overallPercentage: parseFloat(prevSem.percentage) || 0,
-        held: prevSem.totalHeld || 0,
-        attended: prevSem.totalAttended || 0,
-        subjects: prevSem.subjects || []
-      };
-    }
-    
-    return { overallPercentage: 0, held: 0, attended: 0, subjects: [] };
+  // Completed Semesters List for Results dropdown
+  const completedSemList = semestersSorted.filter(sem => sem !== currentSem);
+
+  const selectedSem = selectedSemester || completedSemList[completedSemList.length - 1] || '';
+
+  // Current Semester Live Attendance (always static and distinct from dropdown selection)
+  const liveAttendance = {
+    overallPercentage: parseFloat(attendance.overallPercentage || attendance.overall_percentage) || 0,
+    held: attendance.held || 0,
+    attended: attendance.attended || 0,
+    subjects: attendance.subjects || []
   };
 
-  const semAttendance = getSemesterAttendance(selectedSem);
-  
+  const overallPercentage = liveAttendance.overallPercentage || 0;
+  const isShortage = overallPercentage < 75;
+  const strokeDash = 2 * Math.PI * 38; // radius = 38
+  const strokeOffset = strokeDash - (strokeDash * overallPercentage) / 100;
+
   // Selected Semester SGPA
   const semesterExternalExam = marks.find(e => e.term === selectedSem && e.examId?.startsWith('EXTERNAL'));
   const semesterSgpa = semesterExternalExam?.sgpa ? semesterExternalExam.sgpa.toFixed(2) : 'N/A';
@@ -392,7 +438,7 @@ export default function AcademicModule({ user }) {
   const semesterSpfBands = spfBands.filter(b => b.semesterLabel === selectedSem);
   const semesterSpfBand = semesterSpfBands.length > 0 ? semesterSpfBands[semesterSpfBands.length - 1].band : 'N/A';
 
-  // Latest Completed SGPA & Overall CGPA Card Data
+  // Overall CGPA
   const completedSemesters = marks
     .filter(exam => exam.sgpa && exam.examId?.startsWith('EXTERNAL'))
     .sort((a, b) => {
@@ -401,107 +447,97 @@ export default function AcademicModule({ user }) {
       if (semA.year !== semB.year) return semA.year - semB.year;
       return semA.sem - semB.sem;
     });
-
   const latestSgpa = completedSemesters.length > 0 ? completedSemesters[completedSemesters.length - 1].sgpa.toFixed(2) : 'N/A';
   const overallCgpa = student.cgpa || (completedSemesters.length > 0 ? (completedSemesters.reduce((acc, cur) => acc + (cur.sgpa || 0), 0) / completedSemesters.length).toFixed(2) : 'N/A');
-  const creditsEarned = student.cgpa_credits || 'N/A';
+  const creditsEarned = student.cgpaCredits || 'N/A';
 
   // Latest SPF Band Card Data
   const latestSpf = spfBands.length > 0 ? spfBands[spfBands.length - 1] : null;
 
-  // Semester Exams for current Workspace
-  const semesterExams = marks.filter(exam => exam.term === selectedSem);
-
-  // Compute internal marks table data
-  const getInternalTabMarks = (tabId) => {
-    return (semAttendance.subjects || []).map(sub => {
-      let scored = null;
-      let total = 0;
-      const subNorm = normalizeName(sub.name);
-      
-      if (tabId === 'cie-1' || tabId === 'cie-2') {
-        const cycle = tabId === 'cie-1' ? '1' : '2';
-        const descExam = semesterExams.find(e => e.title?.includes(`CIE-A${cycle}`));
-        const objExam = semesterExams.find(e => e.title?.includes(`CIE-B${cycle}`));
-        const assignExam = semesterExams.find(e => e.title?.includes(`CIE-C${cycle}`));
-        
-        const descItem = descExam?.items?.find(i => normalizeName(i.name).includes(subNorm) || subNorm.includes(normalizeName(i.name)));
-        const objItem = objExam?.items?.find(i => normalizeName(i.name).includes(subNorm) || subNorm.includes(normalizeName(i.name)));
-        const assignItem = assignExam?.items?.find(i => normalizeName(i.name).includes(subNorm) || subNorm.includes(normalizeName(i.name)));
-        
-        const hasDesc = !!descItem && descItem.scored !== null;
-        const hasObj = !!objItem && objItem.scored !== null;
-        const hasAssign = !!assignItem && assignItem.scored !== null;
-        
-        if (hasDesc || hasObj || hasAssign) {
-          const descVal = parseFloat(descItem?.scored) || 0;
-          const objVal = parseFloat(objItem?.scored) || 0;
-          const assignVal = parseFloat(assignItem?.scored) || 0;
-          scored = descVal + objVal + assignVal;
-          total = (descItem ? 25 : 0) + (objItem ? 10 : 0) + (assignItem ? 5 : 0);
-        }
-      } 
-      else if (tabId === 'assignment') {
-        const assign1Exam = semesterExams.find(e => e.title?.includes('CIE-C1'));
-        const assign2Exam = semesterExams.find(e => e.title?.includes('CIE-C2'));
-        const item1 = assign1Exam?.items?.find(i => normalizeName(i.name).includes(subNorm) || subNorm.includes(normalizeName(i.name)));
-        const item2 = assign2Exam?.items?.find(i => normalizeName(i.name).includes(subNorm) || subNorm.includes(normalizeName(i.name)));
-        
-        if ((item1 && item1.scored !== null) || (item2 && item2.scored !== null)) {
-          scored = (parseFloat(item1?.scored) || 0) + (parseFloat(item2?.scored) || 0);
-          total = (item1 ? 5 : 0) + (item2 ? 5 : 0);
-        }
-      } 
-      else if (tabId === 'lab') {
-        const labExams = semesterExams.filter(e => !e.title?.includes('CIE-A') && !e.title?.includes('CIE-B') && !e.title?.includes('CIE-C'));
-        let labScore = 0;
-        let found = false;
-        labExams.forEach(e => {
-          const item = e.items?.find(i => normalizeName(i.name).includes(subNorm) || subNorm.includes(normalizeName(i.name)));
-          if (item && item.scored !== null) {
-            labScore += parseFloat(item.scored) || 0;
-            found = true;
-          }
+  // Compute consolidated internal evaluations
+  const getInternalMarksData = () => {
+    const semesterExams = marks.filter(exam => exam.term === selectedSem);
+    const subNames = new Set();
+    semesterExams.forEach(exam => {
+      if (exam.examId?.startsWith('INTERNAL')) {
+        exam.items?.forEach(item => {
+          if (item.name) subNames.add(item.name);
         });
-        if (found) {
-          scored = labScore;
-          total = 30;
-        }
       }
-      
-      let status = 'Pending';
-      let statusColor = 'bg-slate-50 text-slate-500';
-      if (scored !== null && total > 0) {
-        const ratio = scored / total;
+    });
+
+    return Array.from(subNames).map(subName => {
+      const subNorm = normalizeName(subName);
+
+      // CIE-1 = CIE-A1 + CIE-B1
+      const desc1 = semesterExams.find(e => e.title?.includes('CIE-A1'));
+      const obj1 = semesterExams.find(e => e.title?.includes('CIE-B1'));
+      const desc1Val = desc1?.items?.find(i => normalizeName(i.name) === subNorm)?.scored;
+      const obj1Val = obj1?.items?.find(i => normalizeName(i.name) === subNorm)?.scored;
+
+      let cie1Scored = null;
+      if ((desc1Val !== undefined && desc1Val !== null) || (obj1Val !== undefined && obj1Val !== null)) {
+        cie1Scored = (parseFloat(desc1Val) || 0) + (parseFloat(obj1Val) || 0);
+      }
+
+      // CIE-2 = CIE-A2 + CIE-B2
+      const desc2 = semesterExams.find(e => e.title?.includes('CIE-A2'));
+      const obj2 = semesterExams.find(e => e.title?.includes('CIE-B2'));
+      const desc2Val = desc2?.items?.find(i => normalizeName(i.name) === subNorm)?.scored;
+      const obj2Val = obj2?.items?.find(i => normalizeName(i.name) === subNorm)?.scored;
+
+      let cie2Scored = null;
+      if ((desc2Val !== undefined && desc2Val !== null) || (obj2Val !== undefined && obj2Val !== null)) {
+        cie2Scored = (parseFloat(desc2Val) || 0) + (parseFloat(obj2Val) || 0);
+      }
+
+      // Assignment = CIE-C1 + CIE-C2
+      const assign1 = semesterExams.find(e => e.title?.includes('CIE-C1'));
+      const assign2 = semesterExams.find(e => e.title?.includes('CIE-C2'));
+      const assign1Val = assign1?.items?.find(i => normalizeName(i.name) === subNorm)?.scored;
+      const assign2Val = assign2?.items?.find(i => normalizeName(i.name) === subNorm)?.scored;
+
+      let assignScored = null;
+      if ((assign1Val !== undefined && assign1Val !== null) || (assign2Val !== undefined && assign2Val !== null)) {
+        assignScored = (parseFloat(assign1Val) || 0) + (parseFloat(assign2Val) || 0);
+      }
+
+      // Total Internal
+      let totalScored = null;
+      if (cie1Scored !== null || cie2Scored !== null || assignScored !== null) {
+        totalScored = (cie1Scored || 0) + (cie2Scored || 0) + (assignScored || 0);
+      }
+
+      // Status calculation based on total (out of 80)
+      let status = '—';
+      let statusColor = 'text-slate-400';
+      if (totalScored !== null) {
+        const ratio = totalScored / 80;
         if (ratio >= 0.75) {
           status = 'Excellent';
-          statusColor = 'bg-green-50 text-green-600';
+          statusColor = 'text-green-600 bg-green-50 border-green-100';
         } else if (ratio >= 0.50) {
           status = 'Average';
-          statusColor = 'bg-amber-50 text-amber-600';
+          statusColor = 'text-amber-600 bg-amber-50 border-amber-100';
         } else {
-          status = 'Needs Focus';
-          statusColor = 'bg-red-50 text-red-600';
+          status = 'Needs Attention';
+          statusColor = 'text-orange-600 bg-orange-50 border-orange-100';
         }
       }
-      
+
       return {
-        subject: sub.name,
-        scored,
-        total,
+        subject: subName,
+        cie1: cie1Scored !== null ? cie1Scored : '—',
+        cie2: cie2Scored !== null ? cie2Scored : '—',
+        assignment: assignScored !== null ? assignScored : '—',
+        total: totalScored !== null ? totalScored : '—',
         status,
         statusColor
       };
-    }).filter(row => row.scored !== null);
+    });
   };
 
-  const internalMarksData = getInternalTabMarks(activeInternalTab);
-
-  // Circle Gauge styling parameters
-  const strokeDash = 2 * Math.PI * 54; // radius = 54
-  const overallPercentage = semAttendance.overallPercentage || 0;
-  const strokeOffset = strokeDash - (strokeDash * overallPercentage) / 100;
-  const isShortage = overallPercentage < 75;
+  const internalMarksData = getInternalMarksData();
 
   const handleSemesterChange = (e) => {
     const val = e.target.value;
@@ -514,28 +550,28 @@ export default function AcademicModule({ user }) {
 
   return (
     <div className="space-y-4">
-      {/* Top Section: Header & Sync Controls */}
-      <div className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      {/* Top Header & Sync Panel */}
+      <div className="bg-white border border-slate-100 rounded-3xl p-4 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <div className="flex items-center gap-1.5 text-xs font-bold text-blue-600 uppercase tracking-wider">
-            <GraduationCap size={14} />
-            <span>Academic Portal</span>
+          <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Current Semester</span>
+          <div className="flex items-center gap-2 mt-0.5">
+            <h1 className="text-base font-extrabold text-slate-800 tracking-tight">{currentSem}</h1>
+            <span className="text-[8px] font-extrabold text-blue-600 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-full uppercase">Live</span>
           </div>
-          <h1 className="text-xl font-extrabold text-slate-800 mt-0.5 font-sans">Student ERP Integration</h1>
         </div>
 
-        <div className="flex items-center gap-3 w-full md:w-auto">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full md:w-auto">
           {/* Semester Selector Dropdown */}
-          <div className="flex items-center gap-2 grow md:grow-0">
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">Semester</span>
+          <div className="flex items-center gap-2 bg-slate-50 border border-slate-200/80 p-1 rounded-xl">
+            <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider pl-2.5">Viewing Academic Results</span>
             <select
               value={selectedSem}
               onChange={handleSemesterChange}
-              className="bg-slate-50 border border-slate-200 text-slate-700 font-bold text-sm rounded-xl py-2 px-3 focus:outline-none focus:border-blue-500 transition-all grow md:grow-0 cursor-pointer"
+              className="bg-white border border-slate-150 text-slate-700 font-extrabold text-xs rounded-lg py-1.5 px-2.5 focus:outline-none focus:border-blue-500 shadow-sm transition-all cursor-pointer"
             >
-              {semestersSorted.map((sem, idx) => (
+              {completedSemList.map((sem, idx) => (
                 <option key={idx} value={sem}>
-                  {sem}
+                  {formatShortSem(sem)}
                 </option>
               ))}
             </select>
@@ -544,202 +580,217 @@ export default function AcademicModule({ user }) {
           <button
             onClick={handleManualSync}
             disabled={isRefreshing}
-            className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-600 disabled:text-blue-400 font-bold text-sm rounded-xl transition-all cursor-pointer shadow-sm"
+            className="flex items-center justify-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white disabled:bg-blue-400 font-bold text-xs rounded-xl transition-all cursor-pointer shadow-sm shadow-blue-500/10"
           >
-            <RefreshCw size={14} className={`transition-transform duration-700 ${isRefreshing ? 'rotate-180' : ''}`} />
+            <RefreshCw size={12} className={`transition-transform duration-700 ${isRefreshing ? 'rotate-180' : ''}`} />
             <span>{isRefreshing ? 'Syncing...' : 'Sync ERP'}</span>
           </button>
         </div>
       </div>
 
-      {/* Main 2-Column Responsive Layout Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-10 lg:grid-cols-12 gap-4">
+      {/* Main 2-Column Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-10 lg:grid-cols-12 gap-4 items-start">
         
-        {/* LEFT COLUMN: Academic Snapshot (35% width on desktop) */}
+        {/* LEFT COLUMN: Academic Snapshot (35% width) */}
         <div className="md:col-span-4 lg:col-span-4 space-y-4">
           
-          {/* Card 1: Attendance Circular Progress */}
+          {/* Card 1: Live Attendance progress */}
           <div className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex flex-col justify-between items-center text-center relative overflow-hidden">
-            <div className="w-full flex justify-between items-start mb-1">
-              <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Attendance</span>
-              <span className={`text-[9px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full ${
-                isShortage ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'
+            <div className="w-full flex justify-between items-start">
+              <div className="text-left">
+                <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Current Attendance</span>
+                <span className="text-[11px] font-bold text-slate-600 mt-0.5">{formatShortSem(currentSem)} (Live)</span>
+              </div>
+              <span className={`text-[8px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded border ${
+                isShortage ? 'bg-red-50 text-red-600 border-red-100' : 'bg-green-50 text-green-600 border-green-100'
               }`}>
-                {isShortage ? 'Shortage Warning' : 'On Track'}
+                {isShortage ? 'Shortage' : 'On Track'}
               </span>
             </div>
 
-            <div className="flex items-center justify-center my-4 relative">
-              <svg className="w-28 h-28 transform -rotate-90">
-                <circle cx="56" cy="56" r="42" className="stroke-slate-100 fill-none" strokeWidth="8" />
+            <div className="flex items-center justify-center my-3 relative">
+              <svg className="w-24 h-24 transform -rotate-90">
+                <circle cx="48" cy="48" r="38" className="stroke-slate-100 fill-none" strokeWidth="6" />
                 <circle 
-                  cx="56" 
-                  cy="56" 
-                  r="42" 
+                  cx="48" 
+                  cy="48" 
+                  r="38" 
                   className={`fill-none transition-all duration-1000 ${
                     isShortage ? 'stroke-red-500' : 'stroke-green-500'
                   }`} 
-                  strokeWidth="8"
-                  strokeDasharray={2 * Math.PI * 42}
-                  strokeDashoffset={2 * Math.PI * 42 - (2 * Math.PI * 42 * overallPercentage) / 100}
+                  strokeWidth="6"
+                  strokeDasharray={2 * Math.PI * 38}
+                  strokeDashoffset={strokeOffset}
                   strokeLinecap="round"
                 />
               </svg>
               <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <span className="text-xl font-extrabold text-slate-800">{overallPercentage.toFixed(2)}%</span>
-                <span className="text-[8px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">Average</span>
+                <span className="text-lg font-extrabold text-slate-800">{overallPercentage.toFixed(2)}%</span>
+                <span className="text-[7px] text-slate-400 font-bold uppercase tracking-wider">Average</span>
               </div>
             </div>
 
             <div className="w-full flex justify-around border-t border-slate-100 pt-3 text-center">
               <div>
-                <span className="block text-sm font-extrabold text-slate-800">{semAttendance.attended}</span>
-                <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Attended</span>
+                <span className="block text-xs font-extrabold text-slate-800">{liveAttendance.attended}</span>
+                <span className="text-[8px] text-slate-400 font-bold uppercase tracking-wider">Attended</span>
               </div>
               <div className="border-r border-slate-100 my-1"></div>
               <div>
-                <span className="block text-sm font-extrabold text-slate-800">{semAttendance.held}</span>
-                <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Held</span>
+                <span className="block text-xs font-extrabold text-slate-800">{liveAttendance.held}</span>
+                <span className="text-[8px] text-slate-400 font-bold uppercase tracking-wider">Held</span>
+              </div>
+              <div className="border-r border-slate-100 my-1"></div>
+              <div>
+                <span className="block text-xs font-extrabold text-slate-800">{liveAttendance.held - liveAttendance.attended}</span>
+                <span className="text-[8px] text-slate-400 font-bold uppercase tracking-wider">Missed</span>
               </div>
             </div>
 
-            <div className="w-full text-center mt-3 pt-2 border-t border-slate-100 text-[10px] text-slate-400 font-bold">
+            <div className="w-full text-center mt-2.5 pt-2 border-t border-slate-100 text-[8px] text-slate-400 font-bold">
               Last Synced: {data?.lastSuccessAt ? new Date(data.lastSuccessAt).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' }) : 'N/A'}
             </div>
           </div>
 
-          {/* Card 2: Overall CGPA */}
+          {/* Card 2: Academic Standing */}
           <div className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm space-y-3">
             <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Academic Standing</span>
             
-            <div className="grid grid-cols-3 gap-2 text-center">
-              <div className="bg-slate-50 border border-slate-100/50 p-2 rounded-xl">
-                <span className="block text-[8px] text-slate-400 font-bold uppercase tracking-wider">Overall CGPA</span>
-                <span className="block text-base font-extrabold text-slate-800 mt-1">{overallCgpa}</span>
+            <div className="grid grid-cols-2 gap-2 text-center">
+              <div className="bg-slate-50 border border-slate-100/50 p-3 rounded-xl col-span-2">
+                <span className="block text-[9px] text-slate-400 font-bold uppercase tracking-wider">Overall CGPA</span>
+                <span className="block text-xl font-extrabold text-slate-800 mt-0.5">{overallCgpa}</span>
+                <span className="block text-[10px] text-slate-400 font-bold mt-1.5">Credits Earned: {creditsEarned}</span>
               </div>
-              <div className="bg-slate-50 border border-slate-100/50 p-2 rounded-xl">
-                <span className="block text-[8px] text-slate-400 font-bold uppercase tracking-wider">Latest SGPA</span>
-                <span className="block text-base font-extrabold text-slate-800 mt-1">{latestSgpa}</span>
+              
+              <div className="bg-slate-50 border border-slate-100/50 p-2 rounded-lg">
+                <span className="block text-[7px] text-slate-400 font-bold uppercase tracking-wider">Viewing Term</span>
+                <span className="block text-[11px] font-extrabold text-slate-700 mt-0.5">{formatShortSem(selectedSem)}</span>
               </div>
-              <div className="bg-slate-50 border border-slate-100/50 p-2 rounded-xl">
-                <span className="block text-[8px] text-slate-400 font-bold uppercase tracking-wider">Credits Earned</span>
-                <span className="block text-base font-extrabold text-slate-800 mt-1">{creditsEarned}</span>
+              
+              <div className="bg-slate-50 border border-slate-100/50 p-2 rounded-lg">
+                <span className="block text-[7px] text-slate-400 font-bold uppercase tracking-wider">Term SGPA</span>
+                <span className="block text-[11px] font-extrabold text-slate-700 mt-0.5">{semesterSgpa}</span>
               </div>
             </div>
           </div>
 
-          {/* Card 3: Latest SPF Band */}
+          {/* Card 3: Semester SPF Band */}
           <div className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex justify-between items-center relative overflow-hidden">
             <div>
-              <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Latest SPF Band</span>
-              <div className="flex items-baseline gap-1 mt-1">
-                <span className="text-xl font-extrabold text-slate-800">Band {latestSpf?.band || 'N/A'}</span>
-                <span className="text-[10px] font-bold text-slate-400">Cycle {latestSpf?.cycle || '1'}</span>
+              <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Semester SPF Band</span>
+              <div className="flex items-baseline gap-1 mt-0.5">
+                <span className="text-xl font-extrabold text-slate-800">Band {semesterSpfBand}</span>
+                <span className="text-[9px] font-bold text-slate-400">({formatShortSem(selectedSem)})</span>
               </div>
             </div>
             
             <div className="text-right">
-              <span className="block text-[8px] text-slate-400 font-bold uppercase tracking-wider">Last Updated</span>
-              <span className="text-xs font-bold text-slate-700">
-                {latestSpf?.scrapedAt ? new Date(latestSpf.scrapedAt).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' }) : 'N/A'}
+              <span className="block text-[8px] text-slate-400 font-bold uppercase tracking-wider">Latest Status</span>
+              <span className={`inline-block px-2 py-0.5 rounded font-extrabold text-[8px] mt-1 border ${
+                latestSpf?.band === 'A' ? 'bg-green-50 text-green-600 border-green-100' : 'bg-blue-50 text-blue-600 border-blue-100'
+              }`}>
+                Band {latestSpf?.band || 'N/A'} (C{latestSpf?.cycle || '1'})
               </span>
             </div>
           </div>
 
-          {/* Card 4: ERP Connection status */}
-          <div className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-green-50 rounded-xl flex items-center justify-center text-green-600">
-                <UserCheck size={16} />
-              </div>
-              <div>
-                <span className="block text-[8px] text-slate-400 font-bold uppercase tracking-wider">ERP Connected</span>
-                <span className="text-xs font-bold text-slate-700">Verified</span>
-              </div>
-            </div>
-
-            <div className="text-right">
-              <span className="block text-[8px] text-slate-400 font-bold uppercase tracking-wider">Last Sync</span>
-              <span className="text-xs font-bold text-slate-700">
-                {data?.lastSuccessAt ? new Date(data.lastSuccessAt).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' }) : 'N/A'}
-              </span>
+          {/* Card 4: Horizontal SPF Progression Journey */}
+          <div className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm space-y-2 relative overflow-hidden">
+            <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">SPF Journey</span>
+            
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin">
+              {spfBands.length === 0 ? (
+                <span className="text-slate-400 text-[10px] font-bold py-1">No progression found</span>
+              ) : (
+                spfBands.map((b, idx) => {
+                  const isA = b.band === 'A';
+                  const isB = b.band === 'B';
+                  const isC = b.band === 'C';
+                  const bandColor = isA ? 'bg-green-50 text-green-600 border-green-100' :
+                                    isB ? 'bg-blue-50 text-blue-600 border-blue-100' :
+                                    isC ? 'bg-amber-50 text-amber-600 border-amber-100' :
+                                    'bg-red-50 text-red-600 border-red-100';
+                  
+                  return (
+                    <div key={idx} className="flex items-center shrink-0">
+                      <div className="flex flex-col items-center text-center p-1.5 bg-slate-50 border border-slate-100 rounded-lg min-w-[64px]">
+                        <span className="text-[8px] font-bold text-slate-700">{formatShortSem(b.semesterLabel)}</span>
+                        <span className="text-[7px] text-slate-400 font-bold mt-0.5">Cycle {b.cycle}</span>
+                        <span className={`px-1 py-0.5 rounded font-extrabold text-[8px] mt-1 border ${bandColor}`}>
+                          Band {b.band}
+                        </span>
+                      </div>
+                      {idx < spfBands.length - 1 && (
+                        <div className="flex items-center justify-center text-slate-300 font-extrabold ml-2">
+                          →
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
             </div>
           </div>
 
         </div>
 
-        {/* RIGHT COLUMN: Semester Workspace (65% width on desktop) */}
+        {/* RIGHT COLUMN: Semester Workspace (65% width) */}
         <div className={`md:col-span-6 lg:col-span-8 space-y-4 transition-opacity duration-200 ${isFading ? 'opacity-0' : 'opacity-100'}`}>
           
-          {/* Semester Overview Title Badge */}
+          {/* Semester Results header */}
           <div className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex justify-between items-center">
             <div>
-              <span className="text-[9px] font-extrabold text-blue-600 uppercase tracking-wider block">Selected Semester</span>
-              <h2 className="text-sm font-extrabold text-slate-800 mt-0.5">{selectedSem}</h2>
+              <span className="text-[9px] font-extrabold text-blue-600 uppercase tracking-wider block">Academic Dashboard</span>
+              <h2 className="text-xs font-extrabold text-slate-800 mt-0.5">Results: {formatShortSem(selectedSem)}</h2>
             </div>
             
             <div className="flex items-center gap-4">
               <div className="text-center">
                 <span className="block text-[8px] text-slate-400 font-bold uppercase tracking-wider">Semester SGPA</span>
-                <span className="text-sm font-extrabold text-slate-800">{semesterSgpa}</span>
+                <span className="text-xs font-extrabold text-slate-800">{semesterSgpa}</span>
               </div>
-              <div className="border-r border-slate-100 h-5"></div>
+              <div className="border-r border-slate-150 h-5"></div>
               <div className="text-center">
                 <span className="block text-[8px] text-slate-400 font-bold uppercase tracking-wider">SPF Band</span>
-                <span className="text-sm font-extrabold text-slate-800">Band {semesterSpfBand}</span>
+                <span className="text-xs font-extrabold text-slate-800">Band {semesterSpfBand}</span>
               </div>
             </div>
           </div>
 
-          {/* Tabbed Internal Evaluations Card */}
+          {/* Consolidated Evaluations Table (CIE-1, CIE-2, Assignment, Total in one view) */}
           <div className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm space-y-3">
-            <div className="flex justify-between items-center border-b border-slate-100 pb-2">
-              <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Internal Evaluations</span>
-              
-              {/* Tab selector */}
-              <div className="flex gap-1 bg-slate-50 p-1 rounded-lg border border-slate-100/50">
-                {['cie-1', 'cie-2', 'assignment', 'lab'].map(tabId => (
-                  <button
-                    key={tabId}
-                    onClick={() => setActiveInternalTab(tabId)}
-                    className={`px-2.5 py-1 text-[10px] font-bold rounded transition-all cursor-pointer uppercase ${
-                      activeInternalTab === tabId
-                        ? 'bg-white text-blue-600 shadow-sm border border-slate-100'
-                        : 'text-slate-400 hover:text-slate-600'
-                    }`}
-                  >
-                    {tabId === 'cie-1' ? 'CIE-1' : tabId === 'cie-2' ? 'CIE-2' : tabId}
-                  </button>
-                ))}
-              </div>
-            </div>
+            <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Internal Evaluations Summary</span>
 
-            {/* Table layout for internal results */}
-            <div className="border border-slate-100 rounded-xl overflow-hidden">
+            <div className="border border-slate-100 rounded-xl overflow-hidden shadow-sm">
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
                   <tr className="bg-slate-50/50 border-b border-slate-100 font-bold text-slate-400 uppercase tracking-wider">
-                    <th className="py-2 px-3 font-bold">Subject</th>
-                    <th className="py-2 px-3 text-center font-bold">Marks</th>
-                    <th className="py-2 px-3 text-center font-bold">Total</th>
-                    <th className="py-2 px-3 text-right font-bold">Status</th>
+                    <th className="py-2.5 px-3 font-bold">Subject</th>
+                    <th className="py-2.5 px-3 text-center font-bold">CIE-1 <span className="text-[8px] font-normal lowercase">(35)</span></th>
+                    <th className="py-2.5 px-3 text-center font-bold">CIE-2 <span className="text-[8px] font-normal lowercase">(35)</span></th>
+                    <th className="py-2.5 px-3 text-center font-bold">Assignment <span className="text-[8px] font-normal lowercase">(10)</span></th>
+                    <th className="py-2.5 px-3 text-center font-bold">Total <span className="text-[8px] font-normal lowercase">(80)</span></th>
+                    <th className="py-2.5 px-3 text-right font-bold">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium text-slate-600">
                   {internalMarksData.length === 0 ? (
                     <tr>
-                      <td colSpan="4" className="py-5 text-center text-slate-400 font-medium">
-                        No marks available for this evaluation tab.
+                      <td colSpan="6" className="py-6 text-center text-slate-400 font-medium">
+                        No marks available for this semester.
                       </td>
                     </tr>
                   ) : (
                     internalMarksData.map((row, idx) => (
-                      <tr key={idx} className="hover:bg-slate-50/30 transition-colors">
+                      <tr key={idx} className="hover:bg-slate-50/20 transition-colors">
                         <td className="py-2 px-3 font-bold text-slate-700">{row.subject}</td>
-                        <td className="py-2 px-3 text-center font-bold text-slate-800">{row.scored}</td>
-                        <td className="py-2 px-3 text-center">{row.total}</td>
+                        <td className="py-2 px-3 text-center font-bold text-slate-800">{row.cie1}</td>
+                        <td className="py-2 px-3 text-center font-bold text-slate-800">{row.cie2}</td>
+                        <td className="py-2 px-3 text-center font-bold text-slate-800">{row.assignment}</td>
+                        <td className="py-2 px-3 text-center font-extrabold text-blue-600">{row.total}</td>
                         <td className="py-2 px-3 text-right">
-                          <span className={`inline-block px-2 py-0.5 text-[8px] font-extrabold uppercase rounded-full ${row.statusColor}`}>
+                          <span className={`inline-block px-2 py-0.5 text-[8px] font-extrabold uppercase rounded border ${row.statusColor}`}>
                             {row.status}
                           </span>
                         </td>
@@ -751,11 +802,13 @@ export default function AcademicModule({ user }) {
             </div>
           </div>
 
-          {/* Attendance Table Card */}
+          {/* Attendance Registry Table Card (Static Current Semester Registry) */}
           <div className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm space-y-3">
-            <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Subject Attendance Registry</span>
+            <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">
+              Subject Attendance Registry ({formatShortSem(currentSem)})
+            </span>
             
-            <div className="border border-slate-100 rounded-xl overflow-hidden max-h-[250px] overflow-y-auto">
+            <div className="border border-slate-100 rounded-xl overflow-hidden max-h-[250px] overflow-y-auto shadow-sm">
               <table className="w-full text-left border-collapse text-xs">
                 <thead className="sticky top-0 bg-white z-10">
                   <tr className="bg-slate-50 border-b border-slate-100 font-bold text-slate-400 uppercase tracking-wider">
@@ -767,22 +820,22 @@ export default function AcademicModule({ user }) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium text-slate-600">
-                  {semAttendance.subjects.length === 0 ? (
+                  {liveAttendance.subjects.length === 0 ? (
                     <tr>
-                      <td colSpan="5" className="py-5 text-center text-slate-400 font-medium">
+                      <td colSpan="5" className="py-6 text-center text-slate-400 font-medium">
                         No subject logs parsed.
                       </td>
                     </tr>
                   ) : (
-                    semAttendance.subjects.map((sub, idx) => {
+                    liveAttendance.subjects.map((sub, idx) => {
                       const shortage = sub.percentage < 75;
                       const lowShortage = sub.percentage < 65;
                       const barColor = lowShortage ? 'bg-red-500' : shortage ? 'bg-amber-500' : 'bg-green-500';
-                      const textColor = lowShortage ? 'text-red-600 bg-red-50' : shortage ? 'text-amber-600 bg-amber-50' : 'text-green-600 bg-green-50';
+                      const textColor = lowShortage ? 'text-red-600 bg-red-50 border-red-100' : shortage ? 'text-amber-600 bg-amber-50 border-amber-100' : 'text-green-600 bg-green-50 border-green-100';
                       const statusText = shortage ? 'Shortage' : 'On Track';
                       
                       return (
-                        <tr key={idx} className="hover:bg-slate-50/30 transition-colors">
+                        <tr key={idx} className="hover:bg-slate-50/20 transition-colors">
                           <td className="py-2 px-3 font-bold text-slate-700">{sub.name}</td>
                           <td className="py-2 px-3 text-center font-bold text-slate-800">{sub.attended}</td>
                           <td className="py-2 px-3 text-center">{sub.held}</td>
@@ -795,135 +848,9 @@ export default function AcademicModule({ user }) {
                             </div>
                           </td>
                           <td className="py-2 px-3 text-right">
-                            <span className={`inline-block px-2 py-0.5 text-[8px] font-extrabold uppercase rounded-full ${textColor}`}>
+                            <span className={`inline-block px-2 py-0.5 text-[8px] font-extrabold uppercase rounded border ${textColor}`}>
                               {statusText}
                             </span>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* Performance Trend Graph */}
-          <div className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm space-y-3">
-            <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">SGPA Performance Trend</span>
-            
-            <div className="flex justify-center items-center py-2 bg-slate-50/50 rounded-xl border border-slate-100/50">
-              {completedSemesters.length === 0 ? (
-                <div className="py-12 text-slate-400 font-semibold text-[10px]">No SGPA records to draw trend.</div>
-              ) : (
-                <div className="w-full px-2">
-                  <svg className="w-full h-[180px]" viewBox="0 0 600 220" preserveAspectRatio="none">
-                    <line x1="50" y1="30" x2="570" y2="30" className="stroke-slate-200/60 stroke-[1px] stroke-dasharray" strokeDasharray="3 3" />
-                    <line x1="50" y1="75" x2="570" y2="75" className="stroke-slate-200/60 stroke-[1px] stroke-dasharray" strokeDasharray="3 3" />
-                    <line x1="50" y1="120" x2="570" y2="120" className="stroke-slate-200/60 stroke-[1px] stroke-dasharray" strokeDasharray="3 3" />
-                    <line x1="50" y1="165" x2="570" y2="165" className="stroke-slate-200/60 stroke-[1px] stroke-dasharray" strokeDasharray="3 3" />
-                    <line x1="50" y1="210" x2="570" y2="210" className="stroke-slate-200 stroke-[1.5px]" />
-
-                    <text x="35" y="34" className="text-[9px] font-bold fill-slate-400 text-right">10.0</text>
-                    <text x="35" y="79" className="text-[9px] font-bold fill-slate-400 text-right">8.0</text>
-                    <text x="35" y="124" className="text-[9px] font-bold fill-slate-400 text-right">6.0</text>
-                    <text x="35" y="169" className="text-[9px] font-bold fill-slate-400 text-right">4.0</text>
-
-                    {(() => {
-                      const stepX = completedSemesters.length > 1 ? (520 / (completedSemesters.length - 1)) : 520;
-                      const points = completedSemesters.map((item, idx) => {
-                        const x = 50 + idx * stepX;
-                        const sgpa = Math.max(4.0, Math.min(10.0, item.sgpa || 0));
-                        const y = 210 - ((sgpa - 4.0) / 6.0) * 180;
-                        return { x, y, sgpa: item.sgpa, label: formatShortSem(item.term) };
-                      });
-
-                      const linePath = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
-                      const areaPath = points.length > 0 
-                        ? `${linePath} L ${points[points.length - 1].x} 210 L ${points[0].x} 210 Z`
-                        : '';
-
-                      return (
-                        <>
-                          {areaPath && <path d={areaPath} fill="url(#sgpa-grad-unified)" className="opacity-5" />}
-                          {linePath && <path d={linePath} fill="none" stroke="#2563eb" strokeWidth="2.5" strokeLinecap="round" />}
-                          
-                          {points.map((p, i) => (
-                            <g key={i} className="group/dot cursor-pointer">
-                              <title>{`${p.label}: ${p.sgpa.toFixed(2)}`}</title>
-                              <circle 
-                                cx={p.x} 
-                                cy={p.y} 
-                                r="4" 
-                                fill="#2563eb" 
-                                className="stroke-white stroke-[2px] transition-all group-hover/dot:r-6 group-hover/dot:stroke-[3px]" 
-                              />
-                              <text x={p.x} y="220" textAnchor="middle" className="text-[8px] font-bold fill-slate-400">
-                                {p.label}
-                              </text>
-                              <text x={p.x} y={p.y - 10} textAnchor="middle" className="text-[9px] font-bold fill-blue-600 bg-white opacity-0 group-hover/dot:opacity-100 transition-opacity">
-                                {p.sgpa.toFixed(2)}
-                              </text>
-                            </g>
-                          ))}
-                        </>
-                      );
-                    })()}
-
-                    <defs>
-                      <linearGradient id="sgpa-grad-unified" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#2563eb" />
-                        <stop offset="100%" stopColor="#2563eb" stopOpacity="0" />
-                      </linearGradient>
-                    </defs>
-                  </svg>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* SPF History Table Card */}
-          <div className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm space-y-3">
-            <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">SPF Performance History</span>
-            
-            <div className="border border-slate-100 rounded-xl overflow-hidden">
-              <table className="w-full text-left border-collapse text-xs">
-                <thead>
-                  <tr className="bg-slate-50 border-b border-slate-100 font-bold text-slate-400 uppercase tracking-wider">
-                    <th className="py-2 px-3 font-bold">Semester</th>
-                    <th className="py-2 px-3 text-center font-bold">Cycle</th>
-                    <th className="py-2 px-3 text-center font-bold">Band</th>
-                    <th className="py-2 px-3 text-right font-bold">Updated</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 font-medium text-slate-600">
-                  {spfBands.length === 0 ? (
-                    <tr>
-                      <td colSpan="4" className="py-5 text-center text-slate-400 font-medium">
-                        No SPF Band records parsed.
-                      </td>
-                    </tr>
-                  ) : (
-                    spfBands.map((b, idx) => {
-                      const isA = b.band === 'A';
-                      const isB = b.band === 'B';
-                      const isC = b.band === 'C';
-                      const bandColor = isA ? 'bg-green-50 text-green-600 border border-green-100' :
-                                        isB ? 'bg-blue-50 text-blue-600 border border-blue-100' :
-                                        isC ? 'bg-amber-50 text-amber-600 border border-amber-100' :
-                                        'bg-red-50 text-red-600 border border-red-100';
-                      
-                      return (
-                        <tr key={idx} className="hover:bg-slate-50/30 transition-colors">
-                          <td className="py-2 px-3 font-bold text-slate-700">{b.semesterLabel}</td>
-                          <td className="py-2 px-3 text-center">Cycle {b.cycle}</td>
-                          <td className="py-2 px-3 text-center">
-                            <span className={`inline-block w-12 py-0.5 rounded font-extrabold text-[9px] text-center border ${bandColor}`}>
-                              Band {b.band}
-                            </span>
-                          </td>
-                          <td className="py-2 px-3 text-right text-slate-400 font-bold">
-                            {b.scrapedAt ? new Date(b.scrapedAt).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' }) : 'N/A'}
                           </td>
                         </tr>
                       );
