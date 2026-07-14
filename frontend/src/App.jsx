@@ -10,6 +10,8 @@ import CDCDashboard from './pages/CDCDashboard';
 import AdminDashboard from './pages/AdminDashboard';
 import MultiStackProjects from './pages/MultiStackProjects';
 import Internships from './pages/Internships';
+import AcademicModule from './pages/AcademicModule';
+
 
 // A beautifully styled profile card for the Profile route
 const Profile = ({ user, onLogout }) => {
@@ -137,6 +139,10 @@ function AppContent({ user, setUser, handleLogout, isAdmin }) {
           <Route 
             path="/cdc-dashboard" 
             element={user ? <CDCDashboard user={user} /> : <Navigate to="/login" replace />} 
+          />
+          <Route 
+            path="/academic/*" 
+            element={user ? <AcademicModule user={user} /> : <Navigate to="/login" replace />} 
           />
           <Route 
             path="/profile" 
