@@ -21,6 +21,7 @@ lerna-debug.log*
 *.local
 .env
 .env.*
+*.env
 !.env.example
 backend/.env
 frontend/.env
@@ -53,3 +54,8 @@ __pycache__/
 *.sw?
 /misc
 /Future_implementations
+
+# Test audit outputs
+scripts/audit_results.json
+scripts/check_job_details.js
+scripts/check_redis_queues.js

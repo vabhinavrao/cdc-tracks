@@ -7,14 +7,20 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.database import engine, Base, SessionLocal
 from app.models import Track
-from app.routes import auth, student, admin
+from app.routes import auth, student, admin, academic
 
 app = FastAPI(title="HITAM Student Track Explorer API")
 
 # Configure CORS so the React frontend can fetch from the backend
+allowed_origins_env = os.getenv("ALLOWED_ORIGINS")
+if allowed_origins_env:
+    origins = [origin.strip() for origin in allowed_origins_env.split(",") if origin.strip()]
+else:
+    origins = ["*"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # For dev simplicity, allow all. In production, restrict to frontend URL.
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -24,6 +30,11 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(student.router)
 app.include_router(admin.router)
+app.include_router(academic.router)
+
+@app.get("/health")
+def health_check():
+    return {"status": "ok"}
 
 def generate_slug(name: str) -> str:
     """Helper to generate URL-friendly slugs, mirroring the frontend's trackLoader.js logic"""
